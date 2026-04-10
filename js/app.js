@@ -21,7 +21,7 @@ angular.module('socketTester', ['ngSanitize'])
       jsonError:      '',
       encodedPreview: [],
       encodedHex:     '', 
-      lastSent:       '',
+      lastSent:       '', 
       mode:           'msgpack' // 'msgpack' or 'json'
     };
 
