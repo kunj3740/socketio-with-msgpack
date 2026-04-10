@@ -29,8 +29,16 @@ angular.module('socketTester', ['ngSanitize'])
     };
     $scope.listeners       = [];
 
-    $scope.log             = [];
-    $scope._logId          = 0;
+    /* ─── Config ─── */
+    const EVENT_TEMPLATES = {
+      'chat:room:join': '{\n  "conId": ""\n}',
+      'message:send':   '{\n  "conId": "",\n  "msg": ""\n}',
+      'typing:start':   '{\n  "conId": ""\n}',
+      'typing:stop':    '{\n  "conId": ""\n}'
+    };
+
+    // Events that use plain JSON instead of MessagePack encoding
+    const PLAIN_JSON_EVENTS = ['chat:room:join'];
 
     let socket = null;
 
@@ -88,9 +96,11 @@ angular.module('socketTester', ['ngSanitize'])
 
     /* ─── JSON validation & live encode preview ─── */
     $scope.validateJson = function () {
-      // Auto-fill template for chat:room:join if empty
-      if ($scope.emit.eventName === 'chat:room:join' && (!$scope.emit.payloadJson || !$scope.emit.payloadJson.trim())) {
-        $scope.emit.payloadJson = '{\n  "chatroomId": ""\n}';
+      const eventName = ($scope.emit.eventName || '').trim();
+      
+      // Auto-fill template if empty and we have a template for this event
+      if (EVENT_TEMPLATES[eventName] && (!$scope.emit.payloadJson || !$scope.emit.payloadJson.trim())) {
+        $scope.emit.payloadJson = EVENT_TEMPLATES[eventName];
       }
 
       var raw = ($scope.emit.payloadJson || '').trim();
@@ -100,15 +110,19 @@ angular.module('socketTester', ['ngSanitize'])
         $scope.emit.encodedHex     = '';
         return;
       }
+
       try {
-        var obj    = JSON.parse(raw);
-        if ($scope.emit.eventName === 'chat:room:join') {
+        var obj = JSON.parse(raw);
+        
+        // Check if this event should be sent as plain JSON
+        if (PLAIN_JSON_EVENTS.includes(eventName)) {
           $scope.emit.jsonError      = '';
           $scope.emit.encodedPreview = [];
           $scope.emit.encodedHex     = 'Mode: Plain JSON';
           return;
         }
-        var packed = msgpack.encode(obj);   // Uint8Array
+
+        var packed = msgpack.encode(obj);
         var bytes  = Array.from(packed);
         $scope.emit.jsonError      = '';
         $scope.emit.encodedPreview = bytes;
@@ -133,8 +147,8 @@ angular.module('socketTester', ['ngSanitize'])
       if (raw) {
         try {
           payload = JSON.parse(raw);
-          // If NOT the special join event, wrap in MessagePack array
-          if ($scope.emit.eventName !== 'chat:room:join') {
+          // If NOT in the plain JSON list, encode as MessagePack array
+          if (!PLAIN_JSON_EVENTS.includes($scope.emit.eventName)) {
             var packed = msgpack.encode(payload);
             payload = Array.from(new Uint8Array(packed));
           }
@@ -143,14 +157,14 @@ angular.module('socketTester', ['ngSanitize'])
           return;
         }
       } else {
-        if ($scope.emit.eventName === 'chat:room:join') {
+        if (PLAIN_JSON_EVENTS.includes($scope.emit.eventName)) {
           payload = null;
         } else {
           payload = Array.from(new Uint8Array(msgpack.encode(null)));
         }
       }
 
-      var mode = ($scope.emit.eventName === 'chat:room:join') ? 'Plain JSON' : 'MsgPack Array';
+      var mode = PLAIN_JSON_EVENTS.includes($scope.emit.eventName) ? 'Plain JSON' : 'MsgPack Array';
       console.log(`[Emit] Event: ${$scope.emit.eventName} (${mode})`, payload);
       socket.emit($scope.emit.eventName, payload);
 
