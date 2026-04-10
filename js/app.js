@@ -34,9 +34,9 @@ angular.module('socketTester', ['ngSanitize'])
 
     /* ─── Config ─── */
     const EVENT_TEMPLATES = {
-      'chat:room:join': '{\n  "conId": ""\n}',
+      'chat:room:join': '{\n  "chatroomId": ""\n}',
       'message:send':   '{\n  "conId": "",\n  "msg": ""\n}',
-      'typing:start':   '{\n  "conId": ""\n}',
+      'chat:msg:typing':   '{\n  "conId": "",\n  "userId": ""\n "typingStatus" : "" \n}',
       'typing:stop':    '{\n  "conId": ""\n}'
     };
 
