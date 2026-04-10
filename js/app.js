@@ -20,7 +20,7 @@ angular.module('socketTester', ['ngSanitize'])
       payloadJson:    '',
       jsonError:      '',
       encodedPreview: [],
-      encodedHex:     '',
+      encodedHex:     '', 
       lastSent:       '',
       mode:           'msgpack' // 'msgpack' or 'json'
     };
