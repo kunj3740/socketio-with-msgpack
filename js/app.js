@@ -24,7 +24,7 @@ angular.module('socketTester', ['ngSanitize'])
       lastSent:       '', 
       mode:           'msgpack' // 'msgpack' or 'json'
     };
-
+      
     $scope.ui = {
       newListenerName: ''
     };
