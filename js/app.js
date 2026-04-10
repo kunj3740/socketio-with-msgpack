@@ -41,7 +41,7 @@ angular.module('socketTester', ['ngSanitize'])
     };
 
 
-    let socket = null;
+    let socket = null; 
 
     /* ─── Connection ─── */
     $scope.connect = function () {
