@@ -42,6 +42,22 @@
   </section>
 
   <div class="workspace" ng-if="connected">
+    
+    <!-- PROTOCOL SETTINGS -->
+    <section class="panel settings-panel">
+      <div class="panel-label">PROTOCOL SETTINGS</div>
+      <div class="settings-row">
+        <label class="field-label">DATA ENCODING MODE</label>
+        <div class="mode-toggle">
+          <button class="mode-btn mode-json" ng-class="{'active': emit.mode === 'json'}" ng-click="emit.mode = 'json'; validateJson()">JSON</button>
+          <button class="mode-btn mode-msgpack" ng-class="{'active': emit.mode === 'msgpack'}" ng-click="emit.mode = 'msgpack'; validateJson()">MSGPACK</button>
+        </div>
+      </div>
+      <div class="settings-info">
+        <span ng-show="emit.mode === 'msgpack'">⚡ Data will be encoded as <strong>MessagePack (binary)</strong> before sending.</span>
+        <span ng-show="emit.mode === 'json'">⚡ Data will be sent as <strong>Plain JSON</strong>.</span>
+      </div>
+    </section>
 
     <!-- EMIT PANEL -->
     <section class="panel emit-panel">
@@ -54,7 +70,9 @@
 
       <div class="field-row">
         <label class="field-label">
-          PAYLOAD <span class="badge">JSON → MsgPack → [numbers]</span>
+          PAYLOAD 
+          <span class="badge" ng-if="emit.mode === 'msgpack'">JSON → MsgPack → [numbers]</span>
+          <span class="badge badge-json" ng-if="emit.mode === 'json'">JSON (Standard)</span>
         </label>
         <div class="editor-wrap" ng-class="{'editor-error': emit.jsonError}">
           <textarea class="inp inp-json" ng-model="emit.payloadJson" ng-change="validateJson()" rows="7" placeholder='{ "user": "kunj", "msg": "hello", "room": 42 }'></textarea>
@@ -73,8 +91,8 @@
       </div>
 
       <div class="action-row">
-        <button class="btn btn-emit" ng-click="emitEvent()" ng-disabled="!emit.eventName || emit.jsonError">
-          <span class="btn-icon">▶</span> SEND MSGPACK
+        <button class="btn btn-emit" ng-click="emitEvent()" ng-disabled="!emit.eventName || emit.jsonError" ng-class="{'btn-emit-json': emit.mode === 'json'}">
+          <span class="btn-icon">▶</span> SEND {{ emit.mode === 'json' ? 'JSON' : 'MSGPACK' }}
         </button>
         <div class="send-feedback" ng-if="emit.lastSent">
           <span class="ok-icon">✓</span> Sent <span class="mono">{{ emit.lastSent }}</span>

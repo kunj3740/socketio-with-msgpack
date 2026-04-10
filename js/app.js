@@ -21,7 +21,8 @@ angular.module('socketTester', ['ngSanitize'])
       jsonError:      '',
       encodedPreview: [],
       encodedHex:     '',
-      lastSent:       ''
+      lastSent:       '',
+      mode:           'msgpack' // 'msgpack' or 'json'
     };
 
     $scope.ui = {
@@ -37,8 +38,6 @@ angular.module('socketTester', ['ngSanitize'])
       'typing:stop':    '{\n  "conId": ""\n}'
     };
 
-    // Events that use plain JSON instead of MessagePack encoding
-    const PLAIN_JSON_EVENTS = ['chat:room:join'];
 
     let socket = null;
 
@@ -114,8 +113,8 @@ angular.module('socketTester', ['ngSanitize'])
       try {
         var obj = JSON.parse(raw);
         
-        // Check if this event should be sent as plain JSON
-        if (PLAIN_JSON_EVENTS.includes(eventName)) {
+        // Check if manual mode is set to JSON
+        if ($scope.emit.mode === 'json') {
           $scope.emit.jsonError      = '';
           $scope.emit.encodedPreview = [];
           $scope.emit.encodedHex     = 'Mode: Plain JSON';
@@ -147,8 +146,8 @@ angular.module('socketTester', ['ngSanitize'])
       if (raw) {
         try {
           payload = JSON.parse(raw);
-          // If NOT in the plain JSON list, encode as MessagePack array
-          if (!PLAIN_JSON_EVENTS.includes($scope.emit.eventName)) {
+          // If mode is msgpack, encode as MessagePack array
+          if ($scope.emit.mode === 'msgpack') {
             var packed = msgpack.encode(payload);
             payload = Array.from(new Uint8Array(packed));
           }
@@ -157,14 +156,14 @@ angular.module('socketTester', ['ngSanitize'])
           return;
         }
       } else {
-        if (PLAIN_JSON_EVENTS.includes($scope.emit.eventName)) {
+        if ($scope.emit.mode === 'json') {
           payload = null;
         } else {
           payload = Array.from(new Uint8Array(msgpack.encode(null)));
         }
       }
 
-      var mode = PLAIN_JSON_EVENTS.includes($scope.emit.eventName) ? 'Plain JSON' : 'MsgPack Array';
+      var mode = $scope.emit.mode === 'json' ? 'Plain JSON' : 'MsgPack Array';
       console.log(`[Emit] Event: ${$scope.emit.eventName} (${mode})`, payload);
       socket.emit($scope.emit.eventName, payload);
 
