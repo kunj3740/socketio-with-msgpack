@@ -12,7 +12,7 @@ angular.module('socketTester', ['ngSanitize'])
     /* ─── State ─── */
     $scope.serverUrl   = 'http://localhost:3001';
     $scope.connected   = false;
-    $scope.connecting  = false;
+    $scope.connecting  = false;   
     $scope.connError   = '';
 
     $scope.emit = {
