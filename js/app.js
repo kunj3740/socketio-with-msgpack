@@ -29,6 +29,8 @@ angular.module('socketTester', ['ngSanitize'])
       newListenerName: ''
     };
     $scope.listeners       = [];
+    $scope._logId          = 0;
+    $scope.log             = [];
 
     /* ─── Config ─── */
     const EVENT_TEMPLATES = {
