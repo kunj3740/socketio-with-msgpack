@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="socketTester">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SocketIO Binary Tester</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body ng-controller="MainCtrl">
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="logo">
+      <span class="logo-icon">⬡</span>
+      <span class="logo-text">MSGPACK<em>IO</em></span>
+    </div>
+    <div class="conn-status-bar">
+      <div class="status-dot" ng-class="{'dot-connected': connected, 'dot-disconnected': !connected, 'dot-connecting': connecting}"></div>
+      <span class="status-label">{{ connected ? 'CONNECTED' : (connecting ? 'CONNECTING...' : 'DISCONNECTED') }}</span>
+      <span class="status-url" ng-if="connected">{{ serverUrl }}</span>
+    </div>
+  </header>
+
+  <!-- CONNECTION PANEL -->
+  <section class="panel conn-panel">
+    <div class="panel-label">CONNECTION</div>
+    <div class="conn-row">
+      <input class="inp inp-url" type="text" ng-model="serverUrl" placeholder="ws://localhost:3001" ng-disabled="connected" />
+      <button class="btn btn-connect" ng-if="!connected" ng-click="connect()" ng-disabled="connecting">
+        <span ng-if="!connecting">CONNECT</span>
+        <span ng-if="connecting">
+          <span class="spinner"></span> CONNECTING
+        </span>
+      </button>
+      <button class="btn btn-disconnect" ng-if="connected" ng-click="disconnect()">DISCONNECT</button>
+    </div>
+    <div class="error-bar" ng-if="connError">
+      <span class="err-icon">⚠</span> {{ connError }}
+    </div>
+  </section>
+
+  <div class="workspace" ng-if="connected">
+
+    <!-- EMIT PANEL -->
+    <section class="panel emit-panel">
+      <div class="panel-label">EMIT EVENT</div>
+
+      <div class="field-row">
+        <label class="field-label">EVENT NAME</label>
+        <input class="inp" type="text" ng-model="emit.eventName" ng-change="validateJson()" placeholder="e.g. message, join_room, ping" />
+      </div>
+
+      <div class="field-row">
+        <label class="field-label">
+          PAYLOAD <span class="badge">JSON → MsgPack → [numbers]</span>
+        </label>
+        <div class="editor-wrap" ng-class="{'editor-error': emit.jsonError}">
+          <textarea class="inp inp-json" ng-model="emit.payloadJson" ng-change="validateJson()" rows="7" placeholder='{ "user": "kunj", "msg": "hello", "room": 42 }'></textarea>
+          <div class="json-err" ng-if="emit.jsonError">{{ emit.jsonError }}</div>
+        </div>
+      </div>
+
+      <!-- Encoded preview -->
+      <div class="encoded-preview" ng-if="emit.encodedPreview.length">
+        <div class="preview-label">ENCODED BYTES (as JSON Array)</div>
+        <div class="byte-grid">
+          <span class="byte-cell" ng-repeat="b in emit.encodedPreview track by $index"
+                title="{{ b }}">{{ b | hexByte }}</span>
+        </div>
+        <div class="byte-meta">{{ emit.encodedPreview.length }} bytes · {{ emit.encodedHex }}</div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-emit" ng-click="emitEvent()" ng-disabled="!emit.eventName || emit.jsonError">
+          <span class="btn-icon">▶</span> SEND MSGPACK
+        </button>
+        <div class="send-feedback" ng-if="emit.lastSent">
+          <span class="ok-icon">✓</span> Sent <span class="mono">{{ emit.lastSent }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- LISTENERS PANEL -->
+    <section class="panel listen-panel">
+      <div class="panel-label">LISTEN EVENTS</div>
+
+      <form class="add-listener-row" ng-submit="addListener()">
+        <input class="inp" type="text" ng-model="ui.newListenerName" placeholder="event name to listen..." 
+               autocomplete="off" />
+        <button type="submit" class="btn btn-add" ng-disabled="!ui.newListenerName">+ ADD</button>
+      </form>
+
+
+
+      <div class="listeners-list" ng-if="listeners.length">
+        <div class="listener-chip" ng-repeat="l in listeners">
+          <span class="chip-dot" ng-class="{'chip-active': l.active}"></span>
+          <span class="chip-name">{{ l.name }}</span>
+          <span class="chip-count" ng-if="l.count > 0">{{ l.count }}</span>
+          <button class="chip-remove" ng-click="removeListener(l)">✕</button>
+        </div>
+      </div>
+      <div class="empty-listeners" ng-if="!listeners.length">
+        <span>No listeners yet — add an event name above</span>
+      </div>
+    </section>
+
+    <!-- RECEIVED LOG -->
+    <section class="panel log-panel">
+      <div class="panel-label-row">
+        <div class="panel-label">RECEIVED EVENTS <span class="log-count" ng-if="log.length">{{ log.length }}</span></div>
+        <button class="btn-clear" ng-if="log.length" ng-click="clearLog()">CLEAR</button>
+      </div>
+
+      <div class="log-empty" ng-if="!log.length">
+        <div class="log-empty-icon">◌</div>
+        <div>Waiting for events...</div>
+      </div>
+
+      <div class="log-feed" ng-if="log.length">
+        <div class="log-entry" ng-repeat="entry in log | orderBy: '-ts' track by entry.id"
+             ng-class="{'entry-new': entry.isNew}">
+          <div class="entry-header">
+            <span class="entry-event">{{ entry.event }}</span>
+            <span class="entry-time">{{ entry.ts | date:'HH:mm:ss.sss' }}</span>
+            <span class="entry-enc" ng-if="entry.wasMsgpack">
+              <span class="enc-badge">MSGPACK DECODED</span>
+            </span>
+          </div>
+
+          <!-- Raw bytes for verification -->
+          <div class="entry-bytes" ng-if="entry.rawBytes.length">
+            <div class="bytes-label">RAW BYTES (Vec&lt;u8&gt;)</div>
+            <div class="bytes-row">
+              <span class="byte-cell sm" ng-repeat="b in entry.rawBytes | limitTo: 32 track by $index"
+                    title="{{ b }}">{{ b | hexByte }}</span>
+              <span class="byte-more" ng-if="entry.rawBytes.length > 32">+{{ entry.rawBytes.length - 32 }} more</span>
+            </div>
+          </div>
+
+          <!-- Decoded JSON -->
+          <div class="entry-json">
+            <div class="json-label">{{ entry.wasMsgpack ? 'DECODED JSON (MSGPACK)' : 'JSON DATA' }}</div>
+            <pre class="json-pre" ng-bind-html="entry.prettyJson"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /workspace -->
+
+  <!-- not connected splash -->
+  <div class="splash" ng-if="!connected && !connecting">
+    <div class="splash-icon">⬡</div>
+    <div class="splash-title">Connect to a Socket.IO server</div>
+    <div class="splash-sub">Enter a URL above, then emit events with JSON payloads<br>automatically encoded to <strong>MessagePack Vec&lt;u8&gt;</strong></div>
+    <div class="splash-pills">
+      <span class="pill" ng-click="serverUrl='http://localhost:3001'">localhost:3001</span>
+      <span class="pill" ng-click="serverUrl='http://localhost:4000'">localhost:4000</span>
+      <span class="pill" ng-click="serverUrl='http://localhost:8080'">localhost:8080</span>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack-lite/0.1.26/msgpack.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.8.3/angular.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-sanitize/1.8.3/angular-sanitize.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
