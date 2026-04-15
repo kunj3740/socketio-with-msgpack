@@ -32,6 +32,20 @@ angular.module('socketTester', ['ngSanitize'])
     $scope._logId          = 0;
     $scope.log             = [];
 
+    /* ─── HTTP State ─── */
+    $scope.http = {
+      method: 'POST',
+      url: '',
+      contentType: 'application/x-msgpack',
+      payloadJson: '',
+      jsonError: '',
+      encodedBytes: null,
+      encodedPreview: [],
+      encodedHex: '',
+      loading: false,
+      response: null
+    };
+
     /* ─── Config ─── */
     const EVENT_TEMPLATES = {
       'chat:room:join': '{\n  "chatroomId": ""\n}',
@@ -303,6 +317,114 @@ angular.module('socketTester', ['ngSanitize'])
     }
 
     $scope.clearLog = function () { $scope.log = []; };
+
+    /* ─── HTTP API Tester ─── */
+    $scope.validateHttpJson = function() {
+      var raw = ($scope.http.payloadJson || '').trim();
+      if (!raw) {
+        $scope.http.jsonError = '';
+        $scope.http.encodedBytes = null;
+        $scope.http.encodedPreview = [];
+        $scope.http.encodedHex = '';
+        return;
+      }
+      try {
+        var obj = JSON.parse(raw);
+        $scope.http.encodedBytes = msgpack.encode(obj);
+        var bytes = Array.from(new Uint8Array($scope.http.encodedBytes));
+        $scope.http.encodedPreview = bytes;
+        $scope.http.encodedHex = bytes.map(function(b) {
+          return ('00' + b.toString(16)).slice(-2).toUpperCase();
+        }).join(' ');
+        $scope.http.jsonError = '';
+      } catch(e) {
+        $scope.http.jsonError = e.message;
+        $scope.http.encodedBytes = null;
+        $scope.http.encodedPreview = [];
+        $scope.http.encodedHex = '';
+      }
+    };
+
+    $scope.sendHttpRequest = function() {
+      if (!$scope.http.url) return;
+      $scope.http.loading = true;
+      $scope.http.response = null;
+
+      var method = $scope.http.method || 'POST';
+
+      var reqInit = {
+        method: method,
+        headers: {
+          'Content-Type': $scope.http.contentType || 'application/x-msgpack',
+          'Accept': 'application/msgpack, application/x-msgpack, application/json'
+        }
+      };
+
+      if (['GET', 'HEAD'].indexOf(method) === -1) {
+        if ($scope.http.encodedBytes && $scope.http.payloadJson.trim() !== '') {
+          reqInit.body = $scope.http.encodedBytes;
+        } else if (($scope.http.payloadJson || '').trim() !== '') {
+          // Just in case it's invalid but they submit anyway... wait they can't because of disabled button
+          return;
+        }
+      }
+
+      fetch($scope.http.url, reqInit)
+        .then(function(res) {
+          var status = res.status;
+          return res.arrayBuffer().then(function(buffer) {
+            return { status: status, buffer: buffer };
+          });
+        })
+        .then(function(data) {
+          $scope.$applyAsync(function() {
+            $scope.http.loading = false;
+            var rawBytes = Array.from(new Uint8Array(data.buffer));
+            var decoded;
+            var wasMsgpack = false;
+            
+            if (rawBytes.length === 0) {
+              decoded = { _info: 'Empty responses' };
+            } else {
+              try {
+                decoded = msgpack.decode(new Uint8Array(data.buffer));
+                wasMsgpack = true;
+              } catch(e) {
+                // If decode fails, attempt to parse as string/JSON
+                try {
+                  var str = new TextDecoder().decode(new Uint8Array(data.buffer));
+                  decoded = JSON.parse(str);
+                } catch(e2) {
+                  // Fallback: just raw string
+                  decoded = new TextDecoder().decode(new Uint8Array(data.buffer));
+                }
+              }
+            }
+
+            var prettyStr = _syntaxHighlight(JSON.stringify(decoded, null, 2));
+
+            $scope.http.response = {
+              status: data.status,
+              ts: new Date(),
+              rawBytes: rawBytes,
+              wasMsgpack: wasMsgpack,
+              prettyJson: $sce.trustAsHtml(prettyStr)
+            };
+          });
+        })
+        .catch(function(err) {
+          $scope.$applyAsync(function() {
+            $scope.http.loading = false;
+            $scope.http.response = {
+              status: 'Error',
+              ts: new Date(),
+              rawBytes: [],
+              wasMsgpack: false,
+              prettyJson: $sce.trustAsHtml(String(err))
+            };
+          });
+        });
+    };
 
     /* ─── JSON Syntax Highlight ─── */
     function _syntaxHighlight(json) {

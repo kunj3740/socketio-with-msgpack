@@ -41,7 +41,105 @@
     </div>
   </section>
 
-  <div class="workspace" ng-if="connected">
+  <main style="display: flex; flex-direction: column;">
+  <!-- HTTP API TESTER -->
+  <div class="workspace" ng-style="{'order': connected ? 2 : 1}" style="margin-bottom: 20px;">
+    <section class="panel http-req-panel">
+      <div class="panel-label">HTTP API TESTER (MSGPACK)</div>
+
+      <div class="field-row">
+        <label class="field-label">METHOD</label>
+        <select class="inp" ng-model="http.method">
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="PATCH">PATCH</option>
+          <option value="DELETE">DELETE</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <label class="field-label">API URL</label>
+        <input class="inp" type="text" ng-model="http.url" placeholder="http://localhost:3000/api" />
+      </div>
+
+      <div class="field-row">
+        <label class="field-label">CONTENT-TYPE</label>
+        <input class="inp" type="text" list="contentTypes" ng-model="http.contentType" placeholder="application/x-msgpack" />
+        <datalist id="contentTypes">
+          <option value="application/x-msgpack"></option>
+          <option value="application/msgpack"></option>
+          <option value="application/octet-stream"></option>
+          <option value="application/json"></option>
+        </datalist>
+      </div>
+
+      <div class="field-row">
+        <label class="field-label">JSON PAYLOAD</label>
+        <div class="editor-wrap" ng-class="{'editor-error': http.jsonError}">
+          <textarea class="inp inp-json" ng-model="http.payloadJson" ng-change="validateHttpJson()" rows="7" placeholder='{ "test": "data" }'></textarea>
+          <div class="json-err" ng-if="http.jsonError">{{ http.jsonError }}</div>
+        </div>
+      </div>
+
+      <!-- HTTP Encoded preview -->
+      <div class="encoded-preview" ng-if="http.encodedPreview.length && ['GET', 'HEAD'].indexOf(http.method) === -1">
+        <div class="preview-label">MSGPACK ENCODED BYTES</div>
+        <div class="byte-grid">
+          <span class="byte-cell" ng-repeat="b in http.encodedPreview track by $index"
+                title="{{ b }}">{{ b | hexByte }}</span>
+        </div>
+        <div class="byte-meta">{{ http.encodedPreview.length }} bytes · {{ http.encodedHex }}</div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-emit" ng-click="sendHttpRequest()" ng-disabled="!http.url || http.jsonError || http.loading">
+          <span ng-if="!http.loading"><span class="btn-icon">▶</span> SEND REQUEST</span>
+          <span ng-if="http.loading"><span class="spinner"></span> SENDING...</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- HTTP RESPONSE PANEL -->
+    <section class="panel http-res-panel">
+      <div class="panel-label">HTTP RESPONSE</div>
+      
+      <div class="log-empty" ng-if="!http.response && !http.loading" style="padding: 20px 0;">
+        <div class="log-empty-icon" style="animation: none; margin-bottom: 5px; opacity: 0.15; font-size: 24px;">◌</div>
+        <div style="font-size: 11px;">Awaiting response...</div>
+      </div>
+      
+      <div class="log-empty" ng-if="http.loading" style="padding: 20px 0;">
+        <div class="spinner" style="margin-bottom: 10px; border-top-color: var(--accent);"></div>
+        <div style="font-size: 11px;">Waiting for server...</div>
+      </div>
+
+      <div class="log-entry entry-new" ng-if="http.response" style="margin-top: 0; padding: 12px;">
+        <div class="entry-header" style="margin-bottom: 14px;">
+          <span class="entry-event">Status: {{ http.response.status }}</span>
+          <span class="entry-time" ng-if="http.response.ts">{{ http.response.ts | date:'HH:mm:ss.sss' }}</span>
+        </div>
+
+        <div class="entry-bytes" ng-if="http.response.rawBytes.length">
+          <div class="bytes-label">RAW BYTES</div>
+          <div class="bytes-row">
+            <span class="byte-cell sm" ng-repeat="b in http.response.rawBytes | limitTo: 48 track by $index"
+                  title="{{ b }}">{{ b | hexByte }}</span>
+            <span class="byte-more" ng-if="http.response.rawBytes.length > 48">+{{ http.response.rawBytes.length - 48 }} more</span>
+          </div>
+        </div>
+
+        <div class="entry-json" style="margin-bottom: 0;">
+          <div class="json-label" ng-if="http.response.wasMsgpack">DECODED JSON (MSGPACK)</div>
+          <div class="json-label" ng-if="!http.response.wasMsgpack">RESPONSE DATA</div>
+          <pre class="json-pre" ng-bind-html="http.response.prettyJson"></pre>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <div class="workspace" ng-if="connected" style="order: 1">
     
     <!-- PROTOCOL SETTINGS -->
     <section class="panel settings-panel">
@@ -168,6 +266,7 @@
     </section>
 
   </div><!-- /workspace -->
+  </main>
 
   <!-- not connected splash -->
   <div class="splash" ng-if="!connected && !connecting">

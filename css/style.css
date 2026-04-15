@@ -197,6 +197,7 @@ body {
 
 /* ── Workspace Grid ───────────────────────────────────── */
 .workspace {
+  width: 100%;
   max-width: 900px;
   margin: 0 auto 40px;
   display: grid;
@@ -209,6 +210,8 @@ body {
 .emit-panel     { grid-column: 1; }
 .listen-panel   { grid-column: 2; }
 .log-panel      { grid-column: 1 / -1; }
+.http-req-panel { grid-column: 1; }
+.http-res-panel { grid-column: 2; }
 
 /* ── Inputs ───────────────────────────────────────────── */
 .inp {
@@ -808,6 +811,8 @@ body {
   .emit-panel   { grid-column: 1; }
   .listen-panel { grid-column: 1; }
   .log-panel    { grid-column: 1; }
+  .http-req-panel { grid-column: 1; }
+  .http-res-panel { grid-column: 1; }
   .app-header { padding: 0 14px; }
   .conn-panel { margin: 14px; }
   .workspace  { margin: 0 14px 40px; }
