@@ -22,7 +22,8 @@ angular.module('socketTester', ['ngSanitize'])
       encodedPreview: [],
       encodedHex:     '', 
       lastSent:       '', 
-      mode:           'msgpack' // 'msgpack' or 'json'
+      mode:           'msgpack', // 'msgpack' or 'json'
+      rustType:       'vec_u8'   // 'vec_u8' or 'bytes' (only relevant when mode === 'msgpack')
     };
       
     $scope.ui = {
@@ -138,12 +139,17 @@ angular.module('socketTester', ['ngSanitize'])
         }
 
         var packed = msgpack.encode(obj);
-        var bytes  = Array.from(packed);
+        var bytes  = Array.from(new Uint8Array(packed));
         $scope.emit.jsonError      = '';
         $scope.emit.encodedPreview = bytes;
+        var rustType = $scope.emit.rustType || 'vec_u8';
         $scope.emit.encodedHex     = bytes.map(function (b) {
           return ('00' + b.toString(16)).slice(-2).toUpperCase();
         }).join(' ');
+        // Label differs by rust type
+        $scope.emit.encodedTypeLabel = (rustType === 'bytes')
+          ? 'Rust Bytes (binary Buffer)'
+          : 'Rust Vec<u8> (JSON array of numbers)';
       } catch (e) {
         $scope.emit.jsonError      = e.message;
         $scope.emit.encodedPreview = [];
@@ -159,13 +165,20 @@ angular.module('socketTester', ['ngSanitize'])
       var raw = $scope.emit.payloadJson.trim();
       var payload;
 
+      var rustType = $scope.emit.rustType || 'vec_u8';
+
       if (raw) {
         try {
           payload = JSON.parse(raw);
-          // If mode is msgpack, encode as MessagePack array
           if ($scope.emit.mode === 'msgpack') {
             var packed = msgpack.encode(payload);
-            payload = Array.from(new Uint8Array(packed));
+            if (rustType === 'bytes') {
+              // Send as raw binary Buffer (Rust Bytes type)
+              payload = new Uint8Array(packed).buffer;
+            } else {
+              // Send as JSON array of numbers (Rust Vec<u8>)
+              payload = Array.from(new Uint8Array(packed));
+            }
           }
         } catch (e) {
           $scope.emit.jsonError = e.message;
@@ -175,12 +188,18 @@ angular.module('socketTester', ['ngSanitize'])
         if ($scope.emit.mode === 'json') {
           payload = null;
         } else {
-          payload = Array.from(new Uint8Array(msgpack.encode(null)));
+          var emptyPacked = msgpack.encode(null);
+          if (rustType === 'bytes') {
+            payload = new Uint8Array(emptyPacked).buffer;
+          } else {
+            payload = Array.from(new Uint8Array(emptyPacked));
+          }
         }
       }
 
-      var mode = $scope.emit.mode === 'json' ? 'Plain JSON' : 'MsgPack Array';
-      console.log(`[Emit] Event: ${$scope.emit.eventName} (${mode})`, payload);
+      var modeLabel = $scope.emit.mode === 'json' ? 'Plain JSON'
+                    : (rustType === 'bytes' ? 'MsgPack → Bytes (Buffer)' : 'MsgPack → Vec<u8> (Array)');
+      console.log(`[Emit] Event: ${$scope.emit.eventName} (${modeLabel})`, payload);
       socket.emit($scope.emit.eventName, payload);
 
       var ts = new Date().toLocaleTimeString('en-GB', { hour12: false }) +

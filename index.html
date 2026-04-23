@@ -151,8 +151,25 @@
           <button class="mode-btn mode-msgpack" ng-class="{'active': emit.mode === 'msgpack'}" ng-click="emit.mode = 'msgpack'; validateJson()">MSGPACK</button>
         </div>
       </div>
+
+      <!-- Rust type sub-option (only for MSGPACK) -->
+      <div class="settings-row rust-type-row" ng-if="emit.mode === 'msgpack'">
+        <label class="field-label">RUST TYPE</label>
+        <div class="rust-type-toggle">
+          <button class="rust-btn" ng-class="{'active': emit.rustType === 'vec_u8'}" ng-click="emit.rustType = 'vec_u8'; validateJson()">
+            <span class="rust-tag">Vec&lt;u8&gt;</span>
+            <span class="rust-hint">JSON Array of numbers</span>
+          </button>
+          <button class="rust-btn" ng-class="{'active': emit.rustType === 'bytes'}" ng-click="emit.rustType = 'bytes'; validateJson()">
+            <span class="rust-tag">Bytes</span>
+            <span class="rust-hint">Binary Buffer</span>
+          </button>
+        </div>
+      </div>
+
       <div class="settings-info">
-        <span ng-show="emit.mode === 'msgpack'">⚡ Data will be encoded as <strong>MessagePack (binary)</strong> before sending.</span>
+        <span ng-show="emit.mode === 'msgpack' && emit.rustType === 'vec_u8'">⚡ Encoded as <strong>MessagePack → Vec&lt;u8&gt;</strong> (JSON array of numbers) before sending.</span>
+        <span ng-show="emit.mode === 'msgpack' && emit.rustType === 'bytes'">⚡ Encoded as <strong>MessagePack → Bytes</strong> (raw binary Buffer) before sending.</span>
         <span ng-show="emit.mode === 'json'">⚡ Data will be sent as <strong>Plain JSON</strong>.</span>
       </div>
     </section>
@@ -180,12 +197,20 @@
 
       <!-- Encoded preview -->
       <div class="encoded-preview" ng-if="emit.encodedPreview.length">
-        <div class="preview-label">ENCODED BYTES (as JSON Array)</div>
+        <div class="preview-label">
+          ENCODED BYTES
+          <span class="rust-type-badge" ng-if="emit.rustType === 'vec_u8'">Vec&lt;u8&gt;</span>
+          <span class="rust-type-badge rust-type-bytes" ng-if="emit.rustType === 'bytes'">Bytes</span>
+        </div>
         <div class="byte-grid">
           <span class="byte-cell" ng-repeat="b in emit.encodedPreview track by $index"
                 title="{{ b }}">{{ b | hexByte }}</span>
         </div>
-        <div class="byte-meta">{{ emit.encodedPreview.length }} bytes · {{ emit.encodedHex }}</div>
+        <div class="byte-meta">
+          {{ emit.encodedPreview.length }} bytes · {{ emit.encodedHex }}
+          <span class="byte-format-hint" ng-if="emit.rustType === 'vec_u8'"> → sent as JSON Array</span>
+          <span class="byte-format-hint" ng-if="emit.rustType === 'bytes'"> → sent as binary Buffer</span>
+        </div>
       </div>
 
       <div class="action-row">
