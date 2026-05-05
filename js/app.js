@@ -314,7 +314,7 @@ angular.module('socketTester', ['ngSanitize'])
         } catch (e) {}
       }
 
-      var prettyStr = _syntaxHighlight(JSON.stringify(decoded, null, 2));
+      var prettyStr = _renderJson(decoded);
 
       var entry = {
         id:         ++$scope._logId,
@@ -420,7 +420,7 @@ angular.module('socketTester', ['ngSanitize'])
               }
             }
 
-            var prettyStr = _syntaxHighlight(JSON.stringify(decoded, null, 2));
+            var prettyStr = _renderJson(decoded);
 
             $scope.http.response = {
               status: data.status,
@@ -439,30 +439,69 @@ angular.module('socketTester', ['ngSanitize'])
               ts: new Date(),
               rawBytes: [],
               wasMsgpack: false,
-              prettyJson: $sce.trustAsHtml(String(err))
+              prettyJson: $sce.trustAsHtml(_renderJson(err))
             };
           });
         });
     };
 
-    /* ─── JSON Syntax Highlight ─── */
-    function _syntaxHighlight(json) {
-      if (typeof json !== 'string') { json = JSON.stringify(json, null, 2); }
-      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return json.replace(
-        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
-        function (match) {
-          var cls = 'json-num';
-          if (/^"/.test(match)) {
-            cls = /:$/.test(match) ? 'json-key' : 'json-str';
-          } else if (/true|false/.test(match)) {
-            cls = 'json-bool';
-          } else if (/null/.test(match)) {
-            cls = 'json-null';
-          }
-          return '<span class="' + cls + '">' + match + '</span>';
-        }
-      );
+    /* ─── JSON Collapsible Renderer ──────────────── */
+    function _renderJson(val) {
+      if (val === null) return '<span class="json-null">null</span>';
+      if (typeof val === 'number') return '<span class="json-num">' + val + '</span>';
+      if (typeof val === 'boolean') return '<span class="json-bool">' + val + '</span>';
+      if (typeof val === 'string') {
+        var escaped = val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '\\"');
+        return '<span class="json-str">"' + escaped + '"</span>';
+      }
+
+      var isArray = Array.isArray(val);
+      var keys = isArray ? val : Object.keys(val);
+      if (keys.length === 0) {
+        return '<span class="json-brace">' + (isArray ? '[]' : '{}') + '</span>';
+      }
+
+      var html = '<span class="json-group">';
+      html += '<span class="json-toggle"></span>';
+      html += '<span class="json-brace">' + (isArray ? '[' : '{') + '</span>';
+      html += '<span class="json-placeholder" title="Click to expand"> ... </span>';
+      html += '<div class="json-collapsible">';
+
+      if (isArray) {
+        val.forEach(function (item, i) {
+          var canCollapse = (typeof item === 'object' && item !== null && Object.keys(item).length > 0);
+          html += '<div class="json-line' + (canCollapse ? ' json-has-toggle' : '') + '">';
+          html += _renderJson(item);
+          if (i < val.length - 1) html += '<span class="json-comma">,</span>';
+          html += '</div>';
+        });
+      } else {
+        var objKeys = Object.keys(val);
+        objKeys.forEach(function (key, i) {
+          var item = val[key];
+          var canCollapse = (typeof item === 'object' && item !== null && Object.keys(item).length > 0);
+          html += '<div class="json-line' + (canCollapse ? ' json-has-toggle' : '') + '">';
+          html += '<span class="json-key">"' + key + '"</span><span class="json-brace">: </span>' + _renderJson(item);
+          if (i < objKeys.length - 1) html += '<span class="json-comma">,</span>';
+          html += '</div>';
+        });
+      }
+
+      html += '</div>';
+      html += '<span class="json-brace">' + (isArray ? ']' : '}') + '</span>';
+      html += '</span>';
+      return html;
     }
+
+    // Global click listener for toggling JSON
+    document.addEventListener('click', function (e) {
+      var toggle = e.target.closest('.json-toggle');
+      var placeholder = e.target.closest('.json-placeholder');
+      if (toggle || placeholder) {
+        var group = (toggle || placeholder).parentElement;
+        group.classList.toggle('json-collapsed');
+        e.stopPropagation();
+      }
+    });
 
   }]);
