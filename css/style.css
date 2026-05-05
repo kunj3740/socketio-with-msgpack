@@ -648,13 +648,14 @@ body {
 }
 
 .json-pre {
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  word-break: normal;
   font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.7;
-  max-height: 260px;
-  overflow-y: auto;
+  line-height: 1.5;
+  max-height: 400px;
+  overflow: auto;
+  padding: 10px;
 }
 
 /* JSON syntax colors */
@@ -663,6 +664,70 @@ body {
 .json-num  { color: #f0b84d; }
 .json-bool { color: #ff9f43; }
 .json-null { color: var(--muted); }
+
+/* ── Collapsible JSON ─────────────────────────────────── */
+.json-line {
+  display: block;
+  padding-left: 20px;
+  position: relative;
+}
+
+.json-toggle {
+  position: absolute;
+  left: 0;
+  width: 20px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text3);
+  z-index: 2;
+}
+
+.json-toggle:hover {
+  color: var(--accent);
+}
+
+.json-toggle::before {
+  content: '▼';
+  font-size: 7px;
+  transition: transform 0.2s;
+}
+
+.json-collapsed > .json-toggle::before {
+  transform: rotate(-90deg);
+}
+
+.json-collapsible {
+  display: block;
+}
+
+.json-collapsed > .json-collapsible {
+  display: none;
+}
+
+.json-placeholder {
+  display: none;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.json-collapsed > .json-placeholder {
+  display: inline;
+}
+
+.json-brace {
+  color: var(--text3);
+}
+
+.json-comma {
+  color: var(--text3);
+}
 
 /* ── Splash ───────────────────────────────────────────── */
 .splash {
