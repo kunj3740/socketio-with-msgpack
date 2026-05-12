@@ -337,6 +337,25 @@ angular.module('socketTester', ['ngSanitize'])
 
     $scope.clearLog = function () { $scope.log = []; };
 
+    $scope.copyToClipboard = function(data, event) {
+      if (!data) return;
+      var str = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      navigator.clipboard.writeText(str).then(function() {
+        if (event && event.target) {
+          var btn = event.target;
+          var originalText = btn.innerText;
+          btn.innerText = 'COPIED!';
+          btn.classList.add('copied');
+          setTimeout(function() {
+            btn.innerText = originalText;
+            btn.classList.remove('copied');
+          }, 2000);
+        }
+      }).catch(function(err) {
+        console.error('Failed to copy: ', err);
+      });
+    };
+
     /* ─── HTTP API Tester ─── */
     $scope.validateHttpJson = function() {
       var raw = ($scope.http.payloadJson || '').trim();
@@ -427,6 +446,7 @@ angular.module('socketTester', ['ngSanitize'])
               ts: new Date(),
               rawBytes: rawBytes,
               wasMsgpack: wasMsgpack,
+              decoded: decoded,
               prettyJson: $sce.trustAsHtml(prettyStr)
             };
           });
@@ -439,6 +459,7 @@ angular.module('socketTester', ['ngSanitize'])
               ts: new Date(),
               rawBytes: [],
               wasMsgpack: false,
+              decoded: err,
               prettyJson: $sce.trustAsHtml(_renderJson(err))
             };
           });
