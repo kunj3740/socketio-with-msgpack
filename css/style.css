@@ -966,6 +966,31 @@ body {
   color: var(--accent3);
 }
 
+.btn-copy {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  background: rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: var(--radius);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-copy:hover {
+  background: rgba(0, 229, 255, 0.15);
+  border-color: var(--accent);
+}
+
+.btn-copy.copied {
+  background: var(--success);
+  color: #000;
+  border-color: var(--success);
+}
+
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 680px) {
   .workspace {
