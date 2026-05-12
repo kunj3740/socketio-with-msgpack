@@ -130,8 +130,11 @@
         </div>
 
         <div class="entry-json" style="margin-bottom: 0;">
-          <div class="json-label" ng-if="http.response.wasMsgpack">DECODED JSON (MSGPACK)</div>
-          <div class="json-label" ng-if="!http.response.wasMsgpack">RESPONSE DATA</div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div class="json-label" ng-if="http.response.wasMsgpack" style="margin-bottom: 0;">DECODED JSON (MSGPACK)</div>
+            <div class="json-label" ng-if="!http.response.wasMsgpack" style="margin-bottom: 0;">RESPONSE DATA</div>
+            <button class="btn-copy" ng-click="copyToClipboard(http.response.decoded, $event)">COPY JSON</button>
+          </div>
           <pre class="json-pre" ng-bind-html="http.response.prettyJson"></pre>
         </div>
       </div>
@@ -283,7 +286,10 @@
 
           <!-- Decoded JSON -->
           <div class="entry-json">
-            <div class="json-label">{{ entry.wasMsgpack ? 'DECODED JSON (MSGPACK)' : 'JSON DATA' }}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div class="json-label" style="margin-bottom: 0;">{{ entry.wasMsgpack ? 'DECODED JSON (MSGPACK)' : 'JSON DATA' }}</div>
+              <button class="btn-copy" ng-click="copyToClipboard(entry.decoded, $event)">COPY JSON</button>
+            </div>
             <pre class="json-pre" ng-bind-html="entry.prettyJson"></pre>
           </div>
         </div>
