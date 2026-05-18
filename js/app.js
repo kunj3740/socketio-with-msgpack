@@ -38,6 +38,8 @@ angular.module('socketTester', ['ngSanitize'])
       method: 'POST',
       url: '',
       contentType: 'application/x-msgpack',
+      headersJson: '',
+      headersError: '',
       payloadJson: '',
       jsonError: '',
       encodedBytes: null,
@@ -383,6 +385,24 @@ angular.module('socketTester', ['ngSanitize'])
       }
     };
 
+    $scope.validateHttpHeaders = function() {
+      var raw = ($scope.http.headersJson || '').trim();
+      if (!raw) {
+        $scope.http.headersError = '';
+        return;
+      }
+      try {
+        var obj = JSON.parse(raw);
+        if (typeof obj !== 'object' || Array.isArray(obj)) {
+          $scope.http.headersError = 'Headers must be a JSON object';
+        } else {
+          $scope.http.headersError = '';
+        }
+      } catch(e) {
+        $scope.http.headersError = e.message;
+      }
+    };
+
     $scope.sendHttpRequest = function() {
       if (!$scope.http.url) return;
       $scope.http.loading = true;
@@ -390,12 +410,23 @@ angular.module('socketTester', ['ngSanitize'])
 
       var method = $scope.http.method || 'POST';
 
+      var customHeaders = {};
+      var rawHeaders = ($scope.http.headersJson || '').trim();
+      if (rawHeaders) {
+        try {
+          customHeaders = JSON.parse(rawHeaders);
+        } catch(e) {
+          $scope.http.headersError = 'Invalid headers JSON';
+          return;
+        }
+      }
+
       var reqInit = {
         method: method,
-        headers: {
+        headers: Object.assign({
           'Content-Type': $scope.http.contentType || 'application/x-msgpack',
           'Accept': 'application/msgpack, application/x-msgpack, application/json'
-        }
+        }, customHeaders)
       };
 
       if (['GET', 'HEAD'].indexOf(method) === -1) {
