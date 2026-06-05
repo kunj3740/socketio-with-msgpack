@@ -26,6 +26,10 @@
   --glow:       0 0 20px rgba(0, 229, 255, 0.08);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 html, body {
   min-height: 100vh;
   background: var(--bg);
@@ -55,6 +59,32 @@ body {
   top: 0;
   z-index: 100;
   backdrop-filter: blur(12px);
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 24px;
+}
+
+.nav-link {
+  color: var(--text3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.05em;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.nav-link:hover {
+  color: var(--accent);
+  background: rgba(0, 229, 255, 0.05);
+  border-color: rgba(0, 229, 255, 0.15);
 }
 
 .logo {
@@ -137,6 +167,7 @@ body {
   z-index: 1;
   min-width: 0; /* Prevent children from stretching grid item */
   overflow: hidden; /* Contain any overflowing content */
+  scroll-margin-top: 66px;
 }
 
 
@@ -204,6 +235,7 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: auto 1fr;
   gap: 14px;
+  scroll-margin-top: 56px;
 }
 
 .settings-panel { grid-column: 1 / -1; }
@@ -899,17 +931,20 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   font-family: var(--font-mono);
+  color: var(--text3);
 }
 
 .rust-btn:hover {
   border-color: var(--accent2);
   background: rgba(255, 107, 53, 0.04);
+  color: var(--text);
 }
 
 .rust-btn.active {
   border-color: var(--accent2);
   background: rgba(255, 107, 53, 0.1);
   box-shadow: 0 0 12px rgba(255, 107, 53, 0.15);
+  color: var(--accent2);
 }
 
 .rust-tag {
@@ -991,6 +1026,194 @@ body {
   border-color: var(--success);
 }
 
+/* ── Saved Events Panel ─────────────────────────────────── */
+.saved-events-panel {
+  grid-column: 1 / -1;
+}
+
+.saved-events-container {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+}
+
+@media (max-width: 800px) {
+  .saved-events-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.saved-events-list-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.saved-events-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.saved-events-grid::-webkit-scrollbar {
+  width: 4px;
+}
+.saved-events-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+.saved-events-grid::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 4px;
+}
+
+.saved-event-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.saved-event-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(0, 229, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+.saved-event-card.editing-card {
+  border-color: var(--warn);
+  box-shadow: 0 0 10px rgba(255, 165, 0, 0.2);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.card-name {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.card-badge {
+  font-size: 8px;
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.card-preview {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text3);
+  background: var(--bg);
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  height: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-card-action {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  border: 1px solid var(--border);
+  background: var(--bg4);
+  color: var(--text2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.btn-card-action:hover {
+  background: var(--border);
+  color: #fff;
+}
+
+.btn-card-action.load-btn:hover {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+.btn-card-action.edit-btn:hover {
+  background: var(--warn);
+  color: #000;
+  border-color: var(--warn);
+}
+
+.btn-card-action.delete-btn:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.empty-saved-events {
+  color: var(--text3);
+  font-size: 11px;
+  text-align: center;
+  padding: 30px 0;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.saved-events-form-section {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.form-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text);
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.inline-toggle {
+  display: flex;
+  width: 100%;
+}
+
+.inline-toggle button {
+  flex: 1;
+  font-size: 9px !important;
+  padding: 4px !important;
+}
+
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 680px) {
   .workspace {
@@ -999,10 +1222,30 @@ body {
   .settings-panel { grid-column: 1; }
   .emit-panel   { grid-column: 1; }
   .listen-panel { grid-column: 1; }
+  .saved-events-panel { grid-column: 1; }
   .log-panel    { grid-column: 1; }
   .http-req-panel { grid-column: 1; }
   .http-res-panel { grid-column: 1; }
-  .app-header { padding: 0 14px; }
+  .app-header {
+    flex-direction: column;
+    height: auto;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .app-nav {
+    margin: 4px 0;
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
   .conn-panel { margin: 14px; }
   .workspace  { margin: 0 14px 40px; }
 }
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 0 0 rgba(46, 213, 115, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(46, 213, 115, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(46, 213, 115, 0); }
+}
+

@@ -23,15 +23,27 @@ angular.module('socketTester', ['ngSanitize'])
       encodedHex:     '', 
       lastSent:       '', 
       mode:           'msgpack', // 'msgpack' or 'json'
-      rustType:       'vec_u8'   // 'vec_u8' or 'bytes' (only relevant when mode === 'msgpack')
+      rustType:       'bytes'    // 'vec_u8' or 'bytes' (only relevant when mode === 'msgpack')
     };
       
     $scope.ui = {
-      newListenerName: ''
+      newListenerName: '',
+      savedEventsSearch: '',
+      logSearch: ''
     };
     $scope.listeners       = [];
     $scope._logId          = 0;
     $scope.log             = [];
+
+    $scope.savedEvents = [];
+    $scope.savedEventForm = {
+      name: '',
+      payload: '',
+      mode: 'msgpack',
+      rustType: 'bytes',
+      error: ''
+    };
+    $scope.editingId = null;
 
     /* ─── HTTP State ─── */
     $scope.http = {
@@ -117,8 +129,15 @@ angular.module('socketTester', ['ngSanitize'])
       const eventName = ($scope.emit.eventName || '').trim();
       
       // Auto-fill template if empty and we have a template for this event
-      if (EVENT_TEMPLATES[eventName] && (!$scope.emit.payloadJson || !$scope.emit.payloadJson.trim())) {
-        $scope.emit.payloadJson = EVENT_TEMPLATES[eventName];
+      if (!$scope.emit.payloadJson || !$scope.emit.payloadJson.trim()) {
+        var matched = $scope.savedEvents.find(function(e) { return e.name === eventName; });
+        if (matched) {
+          $scope.emit.payloadJson = matched.payload;
+          if (matched.mode) $scope.emit.mode = matched.mode;
+          if (matched.rustType) $scope.emit.rustType = matched.rustType;
+        } else if (EVENT_TEMPLATES[eventName]) {
+          $scope.emit.payloadJson = EVENT_TEMPLATES[eventName];
+        }
       }
 
       var raw = ($scope.emit.payloadJson || '').trim();
@@ -144,7 +163,7 @@ angular.module('socketTester', ['ngSanitize'])
         var bytes  = Array.from(new Uint8Array(packed));
         $scope.emit.jsonError      = '';
         $scope.emit.encodedPreview = bytes;
-        var rustType = $scope.emit.rustType || 'vec_u8';
+        var rustType = $scope.emit.rustType || 'bytes';
         $scope.emit.encodedHex     = bytes.map(function (b) {
           return ('00' + b.toString(16)).slice(-2).toUpperCase();
         }).join(' ');
@@ -167,7 +186,7 @@ angular.module('socketTester', ['ngSanitize'])
       var raw = $scope.emit.payloadJson.trim();
       var payload;
 
-      var rustType = $scope.emit.rustType || 'vec_u8';
+      var rustType = $scope.emit.rustType || 'bytes';
 
       if (raw) {
         try {
@@ -330,14 +349,13 @@ angular.module('socketTester', ['ngSanitize'])
       };
 
       $scope.log.unshift(entry);
-
-      // Limit log to 200 entries
       if ($scope.log.length > 200) { $scope.log.pop(); }
-
       $timeout(function () { entry.isNew = false; }, 800);
     }
 
-    $scope.clearLog = function () { $scope.log = []; };
+    $scope.clearLog = function () {
+      $scope.log = [];
+    };
 
     $scope.copyToClipboard = function(data, event) {
       if (!data) return;
@@ -496,6 +514,201 @@ angular.module('socketTester', ['ngSanitize'])
           });
         });
     };
+
+    /* ─── Saved Events & Templates ─── */
+    $scope.loadSavedEvents = function() {
+      var stored = localStorage.getItem('savedEvents');
+      if (stored) {
+        try {
+          $scope.savedEvents = JSON.parse(stored);
+        } catch(e) {
+          console.error("Failed to parse saved events", e);
+          $scope.savedEvents = [];
+        }
+      } else {
+        $scope.savedEvents = [];
+      }
+    };
+
+    $scope.saveEventsToStorage = function() {
+      localStorage.setItem('savedEvents', JSON.stringify($scope.savedEvents));
+    };
+
+    $scope.selectSavedEvent = function(event) {
+      $scope.emit.eventName = event.name;
+      $scope.emit.payloadJson = event.payload;
+      if (event.mode) $scope.emit.mode = event.mode;
+      if (event.rustType) $scope.emit.rustType = event.rustType;
+      $scope.validateJson();
+      
+      $scope.emit.lastSent = 'Loaded ' + event.name;
+      $timeout(function() {
+        if ($scope.emit.lastSent === 'Loaded ' + event.name) {
+          $scope.emit.lastSent = '';
+        }
+      }, 2000);
+    };
+
+    $scope.applyTemplate = function() {
+      if ($scope.ui.selectedTemplate) {
+        $scope.selectSavedEvent($scope.ui.selectedTemplate);
+        $scope.ui.selectedTemplate = null;
+      }
+    };
+
+    $scope.clearEmitFields = function() {
+      $scope.emit.eventName = '';
+      $scope.emit.payloadJson = '';
+      $scope.emit.encodedPreview = [];
+      $scope.emit.encodedHex = '';
+      $scope.emit.jsonError = '';
+      $scope.validateJson();
+    };
+
+    $scope.validateSavedEventFormJson = function() {
+      var raw = ($scope.savedEventForm.payload || '').trim();
+      if (!raw) {
+        $scope.savedEventForm.error = '';
+        return;
+      }
+      try {
+        JSON.parse(raw);
+        $scope.savedEventForm.error = '';
+      } catch(e) {
+        $scope.savedEventForm.error = e.message;
+      }
+    };
+
+    $scope.saveEvent = function() {
+      if (!$scope.savedEventForm.name) return;
+      
+      var payloadStr = ($scope.savedEventForm.payload || '').trim();
+      if (payloadStr) {
+        try {
+          JSON.parse(payloadStr);
+        } catch(e) {
+          $scope.savedEventForm.error = 'Invalid JSON: ' + e.message;
+          return;
+        }
+      } else {
+        payloadStr = '{}';
+      }
+
+      var targetName = $scope.savedEventForm.name.trim();
+      var existingIdx = $scope.savedEvents.findIndex(function(e) {
+        return e.name.toLowerCase() === targetName.toLowerCase() && (!$scope.editingId || e.id !== $scope.editingId);
+      });
+
+      var eventId = $scope.editingId ? $scope.editingId : (existingIdx !== -1 ? $scope.savedEvents[existingIdx].id : 'evt_' + Date.now());
+
+      var eventData = {
+        id: eventId,
+        name: targetName,
+        payload: payloadStr,
+        mode: $scope.savedEventForm.mode,
+        rustType: $scope.savedEventForm.rustType
+      };
+
+      if ($scope.editingId) {
+        if (existingIdx !== -1) {
+          $scope.savedEvents[existingIdx] = eventData;
+          var oldIdx = $scope.savedEvents.findIndex(function(e) { return e.id === $scope.editingId; });
+          if (oldIdx !== -1 && oldIdx !== existingIdx) {
+            $scope.savedEvents.splice(oldIdx, 1);
+          }
+        } else {
+          var idx = $scope.savedEvents.findIndex(function(e) { return e.id === $scope.editingId; });
+          if (idx !== -1) {
+            $scope.savedEvents[idx] = eventData;
+          }
+        }
+        $scope.editingId = null;
+      } else {
+        if (existingIdx !== -1) {
+          $scope.savedEvents[existingIdx] = eventData;
+        } else {
+          $scope.savedEvents.push(eventData);
+        }
+      }
+
+      $scope.saveEventsToStorage();
+      $scope.cancelEdit();
+    };
+
+    $scope.editEvent = function(event) {
+      $scope.editingId = event.id;
+      $scope.savedEventForm.name = event.name;
+      $scope.savedEventForm.payload = event.payload;
+      $scope.savedEventForm.mode = event.mode || 'msgpack';
+      $scope.savedEventForm.rustType = event.rustType || 'bytes';
+      $scope.savedEventForm.error = '';
+    };
+
+    $scope.deleteEvent = function(event) {
+      if (confirm('Are you sure you want to delete this saved event?')) {
+        var idx = $scope.savedEvents.indexOf(event);
+        if (idx !== -1) {
+          $scope.savedEvents.splice(idx, 1);
+          $scope.saveEventsToStorage();
+          if ($scope.editingId === event.id) {
+            $scope.cancelEdit();
+          }
+        }
+      }
+    };
+
+    $scope.cancelEdit = function() {
+      $scope.editingId = null;
+      $scope.savedEventForm = {
+        name: '',
+        payload: '',
+        mode: 'msgpack',
+        rustType: 'bytes',
+        error: ''
+      };
+    };
+
+    $scope.saveCurrentToSavedEvents = function() {
+      if (!$scope.emit.eventName) return;
+      var payloadStr = ($scope.emit.payloadJson || '').trim();
+      if (payloadStr) {
+        try {
+          JSON.parse(payloadStr);
+        } catch(e) {
+          alert("Cannot save event: Invalid JSON payload.");
+          return;
+        }
+      } else {
+        payloadStr = '{}';
+      }
+      
+      var targetName = $scope.emit.eventName.trim();
+      var existingIdx = $scope.savedEvents.findIndex(function(e) {
+        return e.name.toLowerCase() === targetName.toLowerCase();
+      });
+
+      var newEvt = {
+        id: existingIdx !== -1 ? $scope.savedEvents[existingIdx].id : 'evt_' + Date.now(),
+        name: targetName,
+        payload: payloadStr,
+        mode: $scope.emit.mode || 'msgpack',
+        rustType: $scope.emit.rustType || 'bytes'
+      };
+
+      if (existingIdx !== -1) {
+        $scope.savedEvents[existingIdx] = newEvt;
+      } else {
+        $scope.savedEvents.push(newEvt);
+      }
+      $scope.saveEventsToStorage();
+      
+      $scope.emit.lastSent = 'Saved to Templates!';
+      $timeout(function () { if ($scope.emit.lastSent === 'Saved to Templates!') $scope.emit.lastSent = ''; }, 2000);
+    };
+
+    // Load saved events initially
+    $scope.loadSavedEvents();
+
 
     /* ─── JSON Collapsible Renderer ──────────────── */
     function _renderJson(val) {

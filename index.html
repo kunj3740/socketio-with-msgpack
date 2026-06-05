@@ -16,6 +16,13 @@
       <span class="logo-icon">⬡</span>
       <span class="logo-text">MSGPACK<em>IO</em></span>
     </div>
+    <nav class="app-nav">
+      <a href="#http-section" class="nav-link">HTTP API</a>
+      <a href="#connection-section" class="nav-link">CONNECTION</a>
+      <a href="#emit-section" class="nav-link" ng-if="connected">EMIT</a>
+      <a href="#log-section" class="nav-link" ng-if="connected">RECEIVED</a>
+      <a href="#saved-events-section" class="nav-link" ng-if="connected">TEMPLATES</a>
+    </nav>
     <div class="conn-status-bar">
       <div class="status-dot" ng-class="{'dot-connected': connected, 'dot-disconnected': !connected, 'dot-connecting': connecting}"></div>
       <span class="status-label">{{ connected ? 'CONNECTED' : (connecting ? 'CONNECTING...' : 'DISCONNECTED') }}</span>
@@ -24,7 +31,7 @@
   </header>
 
   <!-- CONNECTION PANEL -->
-  <section class="panel conn-panel">
+  <section class="panel conn-panel" id="connection-section">
     <div class="panel-label">CONNECTION</div>
     <div class="conn-row">
       <input class="inp inp-url" type="text" ng-model="serverUrl" placeholder="ws://localhost:3001" ng-disabled="connected" />
@@ -43,7 +50,7 @@
 
   <main style="display: flex; flex-direction: column;">
   <!-- HTTP API TESTER -->
-  <div class="workspace" ng-style="{'order': connected ? 2 : 1}" style="margin-bottom: 20px;">
+  <div class="workspace" id="http-section" ng-style="{'order': connected ? 2 : 1}" style="margin-bottom: 20px;">
     <section class="panel http-req-panel">
       <div class="panel-label">HTTP API TESTER (MSGPACK)</div>
 
@@ -186,11 +193,20 @@
     </section>
 
     <!-- EMIT PANEL -->
-    <section class="panel emit-panel">
+    <section class="panel emit-panel" id="emit-section">
       <div class="panel-label">EMIT EVENT</div>
 
       <div class="field-row">
-        <label class="field-label">EVENT NAME</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px;">
+          <label class="field-label" style="margin-bottom: 0;">EVENT NAME</label>
+          <div class="template-select-wrap" ng-if="savedEvents.length" style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 8px; color: var(--text3); font-weight: 700; letter-spacing: 0.1em;">TEMPLATES:</span>
+            <select class="inp-select-template" ng-model="ui.selectedTemplate" ng-change="applyTemplate()" ng-options="evt.name for evt in savedEvents" style="background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius); font-size: 10px; padding: 2px 8px; cursor: pointer; outline: none; max-width: 180px;">
+              <option value="">-- Apply Template --</option>
+            </select>
+            <button type="button" class="btn-clear" ng-click="clearEmitFields()" style="font-size: 8px; padding: 2px 6px;" title="Clear Emit Fields">✕ CLEAR</button>
+          </div>
+        </div>
         <input class="inp" type="text" ng-model="emit.eventName" ng-change="validateJson()" placeholder="e.g. message, join_room, ping" />
       </div>
 
@@ -228,14 +244,20 @@
         <button class="btn btn-emit" ng-click="emitEvent()" ng-disabled="!emit.eventName || emit.jsonError" ng-class="{'btn-emit-json': emit.mode === 'json'}">
           <span class="btn-icon">▶</span> SEND {{ emit.mode === 'json' ? 'JSON' : 'MSGPACK' }}
         </button>
+        <button class="btn btn-add" style="margin-left: 0;" ng-click="saveCurrentToSavedEvents()" ng-disabled="!emit.eventName || emit.jsonError" title="Save this event name & payload as a template">
+          ★ SAVE
+        </button>
+        <button class="btn btn-disconnect" style="margin-left: 0; padding: 7px 12px; font-size: 10px;" ng-click="clearEmitFields()" title="Clear event name and payload fields">
+          ✕ CLEAR
+        </button>
         <div class="send-feedback" ng-if="emit.lastSent">
-          <span class="ok-icon">✓</span> Sent <span class="mono">{{ emit.lastSent }}</span>
+          <span class="ok-icon">✓</span> {{ emit.lastSent }}
         </div>
       </div>
     </section>
 
     <!-- LISTENERS PANEL -->
-    <section class="panel listen-panel">
+    <section class="panel listen-panel" id="listen-section">
       <div class="panel-label">LISTEN EVENTS</div>
 
       <form class="add-listener-row" ng-submit="addListener()">
@@ -260,10 +282,14 @@
     </section>
 
     <!-- RECEIVED LOG -->
-    <section class="panel log-panel">
-      <div class="panel-label-row">   
-        <div class="panel-label">RECEIVED EVENTS <span class="log-count" ng-if="log.length">{{ log.length }}</span></div>
-        <button class="btn-clear" ng-if="log.length" ng-click="clearLog()">CLEAR</button>
+    <section class="panel log-panel" id="log-section">
+      <div class="panel-label-row" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">   
+        <div class="panel-label" style="margin-bottom: 0;">RECEIVED EVENTS <span class="log-count" ng-if="log.length">{{ log.length }}</span></div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input class="inp" type="text" ng-model="ui.logSearch" placeholder="🔍 Filter by event name..." style="max-width: 180px; font-size: 10px; padding: 4px 10px; margin-bottom: 0; background: var(--bg3);" />
+          
+          <button class="btn-clear" ng-if="log.length" ng-click="clearLog()" style="margin-bottom: 0;">CLEAR</button>
+        </div>
       </div>
 
       <div class="log-empty" ng-if="!log.length">
@@ -272,7 +298,7 @@
       </div>
 
       <div class="log-feed" ng-if="log.length">
-        <div class="log-entry" ng-repeat="entry in log | orderBy: '-ts' track by entry.id"
+        <div class="log-entry" ng-repeat="entry in log | filter:{event: ui.logSearch} | orderBy: '-ts' track by entry.id"
              ng-class="{'entry-new': entry.isNew}">
           <div class="entry-header">
             <span class="entry-event">{{ entry.event }}</span>
@@ -299,6 +325,81 @@
               <button class="btn-copy" ng-click="copyToClipboard(entry.decoded, $event)">COPY JSON</button>
             </div>
             <pre class="json-pre" ng-bind-html="entry.prettyJson"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SAVED EVENTS PANEL -->
+    <section class="panel saved-events-panel" id="saved-events-section">
+      <div class="panel-label">SAVED EVENTS & TEMPLATES</div>
+      
+      <div class="saved-events-container">
+        <!-- Left Side: List & Search of Saved Events -->
+        <div class="saved-events-list-section">
+          <div style="margin-bottom: 12px;">
+            <input class="inp" type="text" ng-model="ui.savedEventsSearch" placeholder="🔍 Search saved events by name or payload..." />
+          </div>
+          
+          <div class="saved-events-grid" ng-if="savedEvents.length">
+            <div class="saved-event-card" ng-repeat="evt in savedEvents | filter:ui.savedEventsSearch track by evt.id" ng-class="{'editing-card': editingId === evt.id}">
+              <div class="card-header">
+                <span class="card-name" title="{{ evt.name }}">{{ evt.name }}</span>
+                <span class="card-badge" ng-if="evt.mode">{{ evt.mode | uppercase }}</span>
+              </div>
+              <div class="card-preview">{{ evt.payload }}</div>
+              <div class="card-actions">
+                <button class="btn-card-action load-btn" ng-click="selectSavedEvent(evt)" title="Load into Emit Event panel">LOAD</button>
+                <button class="btn-card-action edit-btn" ng-click="editEvent(evt)">EDIT</button>
+                <button class="btn-card-action delete-btn" ng-click="deleteEvent(evt)">DELETE</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="empty-saved-events" ng-if="!savedEvents.length || !(savedEvents | filter:ui.savedEventsSearch).length">
+            <span ng-if="!savedEvents.length">No saved events. Fill the form on the right or click ★ SAVE in the EMIT panel.</span>
+            <span ng-if="savedEvents.length">No events match your search.</span>
+          </div>
+        </div>
+
+        <!-- Right Side: Form to Add/Edit Saved Event -->
+        <div class="saved-events-form-section">
+          <div class="form-title">{{ editingId ? 'EDIT SAVED EVENT' : 'ADD NEW EVENT' }}</div>
+          
+          <div class="field-row">
+            <label class="field-label">EVENT NAME</label>
+            <input class="inp" type="text" ng-model="savedEventForm.name" placeholder="e.g. chat:room:join" />
+          </div>
+          
+          <div class="field-row">
+            <label class="field-label">PAYLOAD (JSON)</label>
+            <div class="editor-wrap" ng-class="{'editor-error': savedEventForm.error}">
+              <textarea class="inp inp-json" ng-model="savedEventForm.payload" ng-change="validateSavedEventFormJson()" rows="5" placeholder='{ "key": "value" }'></textarea>
+              <div class="json-err" ng-if="savedEventForm.error">{{ savedEventForm.error }}</div>
+            </div>
+          </div>
+          
+          <div class="field-row">
+            <label class="field-label">MODE</label>
+            <div class="mode-toggle inline-toggle">
+              <button class="mode-btn mode-json" ng-class="{'active': savedEventForm.mode === 'json'}" ng-click="savedEventForm.mode = 'json'">JSON</button>
+              <button class="mode-btn mode-msgpack" ng-class="{'active': savedEventForm.mode === 'msgpack'}" ng-click="savedEventForm.mode = 'msgpack'">MSGPACK</button>
+            </div>
+          </div>
+
+          <div class="field-row" ng-if="savedEventForm.mode === 'msgpack'">
+            <label class="field-label">RUST TYPE</label>
+            <div class="rust-type-toggle inline-toggle">
+              <button class="rust-btn" ng-class="{'active': savedEventForm.rustType === 'vec_u8'}" ng-click="savedEventForm.rustType = 'vec_u8'">Vec&lt;u8&gt;</button>
+              <button class="rust-btn" ng-class="{'active': savedEventForm.rustType === 'bytes'}" ng-click="savedEventForm.rustType = 'bytes'">Bytes</button>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button class="btn btn-connect" ng-click="saveEvent()" ng-disabled="!savedEventForm.name || savedEventForm.error">
+              {{ editingId ? 'UPDATE' : 'SAVE' }}
+            </button>
+            <button class="btn btn-disconnect" ng-if="editingId" ng-click="cancelEdit()">CANCEL</button>
           </div>
         </div>
       </div>
