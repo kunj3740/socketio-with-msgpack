@@ -52,7 +52,33 @@
   <!-- HTTP API TESTER -->
   <div class="workspace" id="http-section" ng-style="{'order': connected ? 2 : 1}" style="margin-bottom: 20px;">
     <section class="panel http-req-panel">
-      <div class="panel-label">HTTP API TESTER (MSGPACK)</div>
+      <div class="panel-label">HTTP API TESTER (MSGPACK / ARROW)</div>
+
+      <div class="field-row">
+        <label class="field-label">BODY FORMAT</label>
+        <div class="mode-toggle inline-toggle">
+          <button class="mode-btn mode-msgpack" ng-class="{'active': http.format === 'msgpack'}" ng-click="setHttpFormat('msgpack')">MSGPACK</button>
+          <button class="mode-btn mode-arrow" ng-class="{'active': http.format === 'arrow'}" ng-click="setHttpFormat('arrow')">ARROW</button>
+        </div>
+      </div>
+
+      <div class="field-row" ng-if="http.format === 'arrow'">
+        <label class="field-label">ARROW IPC</label>
+        <div class="rust-type-toggle arrow-toggle">
+          <button class="rust-btn" ng-class="{'active': http.arrowIpc === 'file'}" ng-click="setHttpFormat('arrow', 'file')">
+            <span class="rust-tag">FILE</span>
+            <span class="rust-hint">ARROW1 magic · random access</span>
+          </button>
+          <button class="rust-btn" ng-class="{'active': http.arrowIpc === 'stream'}" ng-click="setHttpFormat('arrow', 'stream')">
+            <span class="rust-tag">STREAM</span>
+            <span class="rust-hint">continuation framed</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="arrow-note" ng-if="http.format === 'arrow'">
+        ⚡ Arrow is columnar — the payload must be a <strong>JSON array of row objects</strong>. A single object is sent as one row.
+      </div>
 
       <div class="field-row">
         <label class="field-label">METHOD</label>
@@ -78,6 +104,8 @@
           <option value="application/msgpack"></option>
           <option value="application/octet-stream"></option>
           <option value="application/json"></option>
+          <option value="application/vnd.apache.arrow.file"></option>
+          <option value="application/vnd.apache.arrow.stream"></option>
         </datalist>
       </div>
 
@@ -90,7 +118,11 @@
       </div>
 
       <div class="field-row">
-        <label class="field-label">JSON PAYLOAD</label>
+        <label class="field-label">
+          JSON PAYLOAD
+          <span class="badge" ng-if="http.format === 'msgpack'">JSON → MsgPack</span>
+          <span class="badge badge-arrow" ng-if="http.format === 'arrow'">JSON rows → Arrow IPC ({{ http.arrowIpc }})</span>
+        </label>
         <div class="editor-wrap" ng-class="{'editor-error': http.jsonError}">
           <textarea class="inp inp-json" ng-model="http.payloadJson" ng-change="validateHttpJson()" rows="7" placeholder='{ "test": "data" }'></textarea>
           <div class="json-err" ng-if="http.jsonError">{{ http.jsonError }}</div>
@@ -99,17 +131,32 @@
 
       <!-- HTTP Encoded preview -->
       <div class="encoded-preview" ng-if="http.encodedPreview.length && ['GET', 'HEAD'].indexOf(http.method) === -1">
-        <div class="preview-label">MSGPACK ENCODED BYTES</div>
+        <div class="preview-label">
+          {{ http.format === 'arrow' ? 'ARROW IPC BYTES' : 'MSGPACK ENCODED BYTES' }}
+          <span class="rust-type-badge arrow-badge" ng-if="http.format === 'arrow'">{{ http.arrowIpc | uppercase }}</span>
+        </div>
+        <div class="arrow-schema" ng-if="http.arrowInfo">
+          <div class="arrow-schema-meta">{{ http.arrowInfo.numRows }} rows × {{ http.arrowInfo.numCols }} cols</div>
+          <div class="arrow-fields">
+            <span class="arrow-field" ng-repeat="f in http.arrowInfo.fields">
+              <span class="arrow-field-name">{{ f.name }}</span><span class="arrow-field-type">{{ f.type }}</span>
+            </span>
+          </div>
+          <div class="arrow-dropped" ng-if="http.arrowInfo.dropped.length">
+            ⚠ Dropped (null in every row, no inferable type): {{ http.arrowInfo.dropped.join(', ') }}
+          </div>
+        </div>
         <div class="byte-grid">
-          <span class="byte-cell" ng-repeat="b in http.encodedPreview track by $index"
+          <span class="byte-cell" ng-repeat="b in http.encodedPreview | limitTo: 64 track by $index"
                 title="{{ b }}">{{ b | hexByte }}</span>
+          <span class="byte-more" ng-if="http.encodedPreview.length > 64">+{{ http.encodedPreview.length - 64 }} more</span>
         </div>
         <div class="byte-meta">{{ http.encodedPreview.length }} bytes · {{ http.encodedHex }}</div>
       </div>
 
       <div class="action-row">
         <button class="btn btn-emit" ng-click="sendHttpRequest()" ng-disabled="!http.url || http.jsonError || http.headersError || http.loading">
-          <span ng-if="!http.loading"><span class="btn-icon">▶</span> SEND REQUEST</span>
+          <span ng-if="!http.loading"><span class="btn-icon">▶</span> SEND {{ http.format === 'arrow' ? 'ARROW' : 'MSGPACK' }}</span>
           <span ng-if="http.loading"><span class="spinner"></span> SENDING...</span>
         </button>
       </div>
@@ -132,6 +179,8 @@
       <div class="log-entry entry-new" ng-if="http.response" style="margin-top: 0; padding: 12px;">
         <div class="entry-header" style="margin-bottom: 14px;">
           <span class="entry-event">Status: {{ http.response.status }}</span>
+          <span class="enc-badge enc-badge-arrow" ng-if="http.response.wasArrow">ARROW {{ http.response.arrowIpc | uppercase }} DECODED</span>
+          <span class="enc-badge" ng-if="http.response.wasMsgpack">MSGPACK DECODED</span>
           <span class="entry-time" ng-if="http.response.ts">{{ http.response.ts | date:'HH:mm:ss.sss' }}</span>
         </div>
 
@@ -144,10 +193,20 @@
           </div>
         </div>
 
+        <div class="arrow-schema" ng-if="http.response.arrowInfo" style="margin-bottom: 10px;">
+          <div class="arrow-schema-meta">{{ http.response.arrowInfo.numRows }} rows × {{ http.response.arrowInfo.numCols }} cols</div>
+          <div class="arrow-fields">
+            <span class="arrow-field" ng-repeat="f in http.response.arrowInfo.fields">
+              <span class="arrow-field-name">{{ f.name }}</span><span class="arrow-field-type">{{ f.type }}</span>
+            </span>
+          </div>
+        </div>
+
         <div class="entry-json" style="margin-bottom: 0;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div class="json-label" ng-if="http.response.wasMsgpack" style="margin-bottom: 0;">DECODED JSON (MSGPACK)</div>
-            <div class="json-label" ng-if="!http.response.wasMsgpack" style="margin-bottom: 0;">RESPONSE DATA</div>
+            <div class="json-label" ng-if="http.response.wasArrow" style="margin-bottom: 0;">DECODED ROWS (ARROW)</div>
+            <div class="json-label" ng-if="!http.response.wasArrow && http.response.wasMsgpack" style="margin-bottom: 0;">DECODED JSON (MSGPACK)</div>
+            <div class="json-label" ng-if="!http.response.wasArrow && !http.response.wasMsgpack" style="margin-bottom: 0;">RESPONSE DATA</div>
             <button class="btn-copy" ng-click="copyToClipboard(http.response.decoded, $event)">COPY JSON</button>
           </div>
           <pre class="json-pre" ng-bind-html="http.response.prettyJson"></pre>
@@ -419,6 +478,7 @@
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack-lite/0.1.26/msgpack.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/apache-arrow@17.0.0/Arrow.es2015.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.8.3/angular.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-sanitize/1.8.3/angular-sanitize.min.js"></script>
   <script src="js/app.js"></script>

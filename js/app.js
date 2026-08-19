@@ -49,6 +49,8 @@ angular.module('socketTester', ['ngSanitize'])
     $scope.http = {
       method: 'POST',
       url: '',
+      format: 'msgpack',   // 'msgpack' or 'arrow'
+      arrowIpc: 'file',    // 'file' (ARROW1 magic) or 'stream' — only used when format === 'arrow'
       contentType: 'application/x-msgpack',
       headersJson: '',
       headersError: '',
@@ -57,6 +59,7 @@ angular.module('socketTester', ['ngSanitize'])
       encodedBytes: null,
       encodedPreview: [],
       encodedHex: '',
+      arrowInfo: null,
       loading: false,
       response: null
     };
@@ -376,30 +379,159 @@ angular.module('socketTester', ['ngSanitize'])
       });
     };
 
+    /* ─── Apache Arrow (IPC) ─── */
+    var ARROW_CONTENT_TYPES = {
+      file:   'application/vnd.apache.arrow.file',
+      stream: 'application/vnd.apache.arrow.stream'
+    };
+
+    // Content-Types this app sets on its own — anything else was typed by hand and must not be clobbered.
+    var MANAGED_CONTENT_TYPES = [
+      'application/x-msgpack',
+      'application/msgpack',
+      ARROW_CONTENT_TYPES.file,
+      ARROW_CONTENT_TYPES.stream
+    ];
+
+    function _arrowLoaded() {
+      return typeof Arrow !== 'undefined' && Arrow && typeof Arrow.tableFromJSON === 'function';
+    }
+
+    // Arrow is columnar: it needs a JSON array of row objects. A lone object is sent as one row.
+    function _arrowRows(obj) {
+      var rows = Array.isArray(obj) ? obj : [obj];
+      if (!rows.length) throw new Error('Arrow needs at least one row — the payload array is empty');
+      rows.forEach(function (row, i) {
+        if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+          throw new Error('Arrow needs tabular data — row ' + i + ' is not a JSON object');
+        }
+      });
+      return rows;
+    }
+
+    function _arrowEncode(obj, ipc) {
+      if (!_arrowLoaded()) throw new Error('Apache Arrow failed to load — check the CDN script tag');
+      var rows  = _arrowRows(obj);
+      var table = Arrow.tableFromJSON(rows);
+      return {
+        table:   table,
+        bytes:   Arrow.tableToIPC(table, ipc === 'stream' ? 'stream' : 'file'),
+        dropped: _droppedColumns(rows, table)
+      };
+    }
+
+    // tableFromJSON can't infer a type for a column that is null in every row, so it
+    // silently drops it. Surface that instead of letting the payload quietly shrink.
+    function _droppedColumns(rows, table) {
+      var kept = table.schema.fields.map(function (f) { return f.name; });
+      var seen = [];
+      rows.forEach(function (row) {
+        Object.keys(row).forEach(function (k) {
+          if (kept.indexOf(k) === -1 && seen.indexOf(k) === -1) seen.push(k);
+        });
+      });
+      return seen;
+    }
+
+    function _arrowSchema(table, dropped) {
+      return {
+        numRows: table.numRows,
+        numCols: table.numCols,
+        dropped: dropped || [],
+        fields: table.schema.fields.map(function (f) {
+          return { name: f.name, type: String(f.type), nullable: !!f.nullable };
+        })
+      };
+    }
+
+    // Arrow hands back BigInt / Date / Vector values that neither JSON.stringify nor the
+    // pretty renderer can take — flatten everything to plain JSON first.
+    function _plainify(val, depth) {
+      depth = depth || 0;
+      if (depth > 64) return String(val);
+      if (val === null || val === undefined)  return null;
+      if (typeof val === 'bigint')            return val.toString();
+      if (val instanceof Date)                return val.toISOString();
+      if (ArrayBuffer.isView(val))            return Array.from(val, function (v) { return _plainify(v, depth + 1); });
+      if (Array.isArray(val))                 return val.map(function (v) { return _plainify(v, depth + 1); });
+      if (typeof val !== 'object')            return val;
+      if (typeof val.toJSON === 'function')   return _plainify(val.toJSON(), depth + 1);
+      if (typeof val.toArray === 'function')  return Array.from(val.toArray(), function (v) { return _plainify(v, depth + 1); });
+      var out = {};
+      Object.keys(val).forEach(function (k) { out[k] = _plainify(val[k], depth + 1); });
+      return out;
+    }
+
+    // IPC magic: "ARROW1" starts the file format, a 0xFFFFFFFF continuation starts the stream format.
+    function _detectArrow(u8) {
+      if (u8.length < 8) return '';
+      if (u8[0] === 0x41 && u8[1] === 0x52 && u8[2] === 0x52 &&
+          u8[3] === 0x4f && u8[4] === 0x57 && u8[5] === 0x31) return 'file';
+      if (u8[0] === 0xff && u8[1] === 0xff && u8[2] === 0xff && u8[3] === 0xff) return 'stream';
+      return '';
+    }
+
+    function _arrowDecode(u8) {
+      var table = Arrow.tableFromIPC(u8);
+      return {
+        rows:   table.toArray().map(function (row) { return _plainify(row); }),
+        schema: _arrowSchema(table)
+      };
+    }
+
     /* ─── HTTP API Tester ─── */
+    $scope.setHttpFormat = function (format, ipc) {
+      $scope.http.format = format;
+      if (ipc) { $scope.http.arrowIpc = ipc; }
+      if (!$scope.http.contentType || MANAGED_CONTENT_TYPES.indexOf($scope.http.contentType) !== -1) {
+        $scope.http.contentType = _defaultContentType();
+      }
+      $scope.validateHttpJson();
+    };
+
+    function _defaultContentType() {
+      return ($scope.http.format === 'arrow')
+        ? ARROW_CONTENT_TYPES[$scope.http.arrowIpc] || ARROW_CONTENT_TYPES.file
+        : 'application/x-msgpack';
+    }
+
+    function _clearHttpEncoded() {
+      $scope.http.encodedBytes   = null;
+      $scope.http.encodedPreview = [];
+      $scope.http.encodedHex     = '';
+      $scope.http.arrowInfo      = null;
+    }
+
     $scope.validateHttpJson = function() {
       var raw = ($scope.http.payloadJson || '').trim();
+      _clearHttpEncoded();
       if (!raw) {
         $scope.http.jsonError = '';
-        $scope.http.encodedBytes = null;
-        $scope.http.encodedPreview = [];
-        $scope.http.encodedHex = '';
         return;
       }
       try {
         var obj = JSON.parse(raw);
-        $scope.http.encodedBytes = msgpack.encode(obj);
-        var bytes = Array.from(new Uint8Array($scope.http.encodedBytes));
-        $scope.http.encodedPreview = bytes;
-        $scope.http.encodedHex = bytes.map(function(b) {
+        var bytes;
+
+        if ($scope.http.format === 'arrow') {
+          var enc = _arrowEncode(obj, $scope.http.arrowIpc);
+          bytes = enc.bytes;
+          $scope.http.arrowInfo = _arrowSchema(enc.table, enc.dropped);
+        } else {
+          bytes = new Uint8Array(msgpack.encode(obj));
+        }
+
+        var preview = Array.from(bytes);
+        $scope.http.encodedBytes   = bytes;
+        $scope.http.encodedPreview = preview;
+        // Arrow buffers run to hundreds of bytes even for tiny tables — cap the hex line.
+        $scope.http.encodedHex     = preview.slice(0, 64).map(function(b) {
           return ('00' + b.toString(16)).slice(-2).toUpperCase();
-        }).join(' ');
-        $scope.http.jsonError = '';
+        }).join(' ') + (preview.length > 64 ? ' …' : '');
+        $scope.http.jsonError      = '';
       } catch(e) {
         $scope.http.jsonError = e.message;
-        $scope.http.encodedBytes = null;
-        $scope.http.encodedPreview = [];
-        $scope.http.encodedHex = '';
+        _clearHttpEncoded();
       }
     };
 
@@ -423,10 +555,16 @@ angular.module('socketTester', ['ngSanitize'])
 
     $scope.sendHttpRequest = function() {
       if (!$scope.http.url) return;
-      $scope.http.loading = true;
-      $scope.http.response = null;
 
-      var method = $scope.http.method || 'POST';
+      var method     = $scope.http.method || 'POST';
+      var hasBody    = ['GET', 'HEAD'].indexOf(method) === -1;
+      var rawPayload = ($scope.http.payloadJson || '').trim();
+
+      // Re-encode before sending so a stale preview can never be what goes on the wire.
+      if (hasBody && rawPayload) {
+        $scope.validateHttpJson();
+        if ($scope.http.jsonError) return;
+      }
 
       var customHeaders = {};
       var rawHeaders = ($scope.http.headersJson || '').trim();
@@ -439,21 +577,20 @@ angular.module('socketTester', ['ngSanitize'])
         }
       }
 
+      $scope.http.loading  = true;
+      $scope.http.response = null;
+
       var reqInit = {
         method: method,
         headers: Object.assign({
-          'Content-Type': $scope.http.contentType || 'application/x-msgpack',
-          'Accept': 'application/msgpack, application/x-msgpack, application/json'
+          'Content-Type': $scope.http.contentType || _defaultContentType(),
+          'Accept': 'application/vnd.apache.arrow.file, application/vnd.apache.arrow.stream, ' +
+                    'application/msgpack, application/x-msgpack, application/json'
         }, customHeaders)
       };
 
-      if (['GET', 'HEAD'].indexOf(method) === -1) {
-        if ($scope.http.encodedBytes && $scope.http.payloadJson.trim() !== '') {
-          reqInit.body = $scope.http.encodedBytes;
-        } else if (($scope.http.payloadJson || '').trim() !== '') {
-          // Just in case it's invalid but they submit anyway... wait they can't because of disabled button
-          return;
-        }
+      if (hasBody && rawPayload && $scope.http.encodedBytes) {
+        reqInit.body = $scope.http.encodedBytes;
       }
 
       fetch($scope.http.url, reqInit)
@@ -466,24 +603,48 @@ angular.module('socketTester', ['ngSanitize'])
         .then(function(data) {
           $scope.$applyAsync(function() {
             $scope.http.loading = false;
-            var rawBytes = Array.from(new Uint8Array(data.buffer));
+            var u8         = new Uint8Array(data.buffer);
+            var rawBytes   = Array.from(u8);
             var decoded;
             var wasMsgpack = false;
-            
+            var wasArrow   = false;
+            var arrowInfo  = null;
+            var arrowIpc   = '';
+
             if (rawBytes.length === 0) {
               decoded = { _info: 'Empty responses' };
             } else {
-              try {
-                decoded = msgpack.decode(new Uint8Array(data.buffer));
-                wasMsgpack = true;
-              } catch(e) {
-                // If decode fails, attempt to parse as string/JSON
+              // Arrow has to be tried first: msgpack would happily read the leading
+              // 'A' of ARROW1 as a positive fixint and report a bogus success.
+              var arrowKind = _detectArrow(u8);
+              var handled   = false;
+
+              if (arrowKind && _arrowLoaded()) {
                 try {
-                  var str = new TextDecoder().decode(new Uint8Array(data.buffer));
-                  decoded = JSON.parse(str);
-                } catch(e2) {
-                  // Fallback: just raw string
-                  decoded = new TextDecoder().decode(new Uint8Array(data.buffer));
+                  var arrowRes = _arrowDecode(u8);
+                  decoded   = arrowRes.rows;
+                  arrowInfo = arrowRes.schema;
+                  arrowIpc  = arrowKind;
+                  wasArrow  = true;
+                  handled   = true;
+                } catch(e) {
+                  // Magic matched but the body isn't valid Arrow — fall through to msgpack/JSON.
+                }
+              }
+
+              if (!handled) {
+                try {
+                  decoded    = msgpack.decode(u8);
+                  wasMsgpack = true;
+                } catch(e) {
+                  // If decode fails, attempt to parse as string/JSON
+                  try {
+                    var str = new TextDecoder().decode(u8);
+                    decoded = JSON.parse(str);
+                  } catch(e2) {
+                    // Fallback: just raw string
+                    decoded = new TextDecoder().decode(u8);
+                  }
                 }
               }
             }
@@ -495,6 +656,9 @@ angular.module('socketTester', ['ngSanitize'])
               ts: new Date(),
               rawBytes: rawBytes,
               wasMsgpack: wasMsgpack,
+              wasArrow: wasArrow,
+              arrowInfo: arrowInfo,
+              arrowIpc: arrowIpc,
               decoded: decoded,
               prettyJson: $sce.trustAsHtml(prettyStr)
             };
@@ -503,13 +667,17 @@ angular.module('socketTester', ['ngSanitize'])
         .catch(function(err) {
           $scope.$applyAsync(function() {
             $scope.http.loading = false;
+            var errInfo = { error: (err && err.message) || String(err) };
             $scope.http.response = {
               status: 'Error',
               ts: new Date(),
               rawBytes: [],
               wasMsgpack: false,
-              decoded: err,
-              prettyJson: $sce.trustAsHtml(_renderJson(err))
+              wasArrow: false,
+              arrowInfo: null,
+              arrowIpc: '',
+              decoded: errInfo,
+              prettyJson: $sce.trustAsHtml(_renderJson(errInfo))
             };
           });
         });

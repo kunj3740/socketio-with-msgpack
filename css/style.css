@@ -11,6 +11,7 @@
   --accent:     #00e5ff;
   --accent2:    #ff6b35;
   --accent3:    #39ff14;
+  --accent4:    #a78bfa; /* Apache Arrow */
   --muted:      #6b7c93; /* Lighter muted for visibility */
   --muted2:     #35485d;
   --text:       #ffffff; /* Pure white text */
@@ -1249,3 +1250,103 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(46, 213, 115, 0); }
 }
 
+
+
+/* ── Apache Arrow (HTTP API) ──────────────────────────── */
+.mode-btn.active.mode-arrow {
+  color: var(--accent4);
+}
+
+.badge-arrow {
+  background: rgba(167, 139, 250, 0.12);
+  color: var(--accent4);
+  border-color: rgba(167, 139, 250, 0.25);
+}
+
+.arrow-badge {
+  background: rgba(167, 139, 250, 0.12) !important;
+  color: var(--accent4) !important;
+  border-color: rgba(167, 139, 250, 0.25) !important;
+}
+
+.enc-badge-arrow {
+  background: rgba(167, 139, 250, 0.12);
+  color: var(--accent4);
+  border-color: rgba(167, 139, 250, 0.25);
+}
+
+.arrow-toggle .rust-btn:hover {
+  border-color: var(--accent4);
+  background: rgba(167, 139, 250, 0.05);
+}
+
+.arrow-toggle .rust-btn.active {
+  border-color: var(--accent4);
+  background: rgba(167, 139, 250, 0.1);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.15);
+  color: var(--accent4);
+}
+
+.arrow-toggle .rust-btn.active .rust-tag {
+  color: var(--accent4);
+}
+
+.arrow-note {
+  font-size: 11px;
+  color: var(--text3);
+  background: rgba(167, 139, 250, 0.05);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.arrow-note strong { color: var(--text2); }
+
+.arrow-schema {
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  background: rgba(167, 139, 250, 0.04);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.arrow-schema-meta {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent4);
+  margin-bottom: 7px;
+}
+
+.arrow-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.arrow-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.arrow-field-name { color: var(--text2); }
+
+.arrow-field-type {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.arrow-dropped {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--warn);
+}
