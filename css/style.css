@@ -1350,3 +1350,37 @@ body {
   font-size: 10px;
   color: var(--warn);
 }
+
+.mode-btn.active.mode-auto {
+  color: var(--accent3);
+}
+
+.enc-badge-json {
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--accent);
+  border-color: rgba(0, 229, 255, 0.2);
+}
+
+.enc-badge-text {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+.resp-note {
+  font-size: 11px;
+  color: var(--text3);
+  margin: -6px 0 14px;
+}
+
+.resp-note strong { color: var(--text2); }
+
+.decode-error {
+  font-size: 11px;
+  color: var(--warn);
+  background: rgba(255, 165, 2, 0.06);
+  border: 1px solid rgba(255, 165, 2, 0.2);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}

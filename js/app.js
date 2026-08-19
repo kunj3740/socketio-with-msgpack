@@ -49,8 +49,9 @@ angular.module('socketTester', ['ngSanitize'])
     $scope.http = {
       method: 'POST',
       url: '',
-      format: 'msgpack',   // 'msgpack' or 'arrow'
-      arrowIpc: 'file',    // 'file' (ARROW1 magic) or 'stream' — only used when format === 'arrow'
+      format: 'msgpack',     // request body: 'json', 'msgpack' or 'arrow'
+      respFormat: 'auto',    // response decoder: 'auto', 'json', 'msgpack' or 'arrow'
+      arrowIpc: 'file',      // 'file' (ARROW1 magic) or 'stream' — only used when format === 'arrow'
       contentType: 'application/x-msgpack',
       headersJson: '',
       headersError: '',
@@ -387,11 +388,22 @@ angular.module('socketTester', ['ngSanitize'])
 
     // Content-Types this app sets on its own — anything else was typed by hand and must not be clobbered.
     var MANAGED_CONTENT_TYPES = [
+      'application/json',
       'application/x-msgpack',
       'application/msgpack',
       ARROW_CONTENT_TYPES.file,
       ARROW_CONTENT_TYPES.stream
     ];
+
+    // Accept follows whatever the response decoder is set to, so the server is asked
+    // for the format we are actually prepared to read.
+    var ACCEPT_HEADERS = {
+      auto:    'application/vnd.apache.arrow.file, application/vnd.apache.arrow.stream, ' +
+               'application/msgpack, application/x-msgpack, application/json',
+      arrow:   'application/vnd.apache.arrow.file, application/vnd.apache.arrow.stream',
+      msgpack: 'application/msgpack, application/x-msgpack',
+      json:    'application/json'
+    };
 
     function _arrowLoaded() {
       return typeof Arrow !== 'undefined' && Arrow && typeof Arrow.tableFromJSON === 'function';
@@ -479,6 +491,82 @@ angular.module('socketTester', ['ngSanitize'])
       };
     }
 
+    /* ─── Response decoding ─── */
+    function _text(u8) {
+      return new TextDecoder().decode(u8);
+    }
+
+    // A forced decoder that fails is worth reporting — falling back silently would hide
+    // the exact mismatch the user picked that format to check for.
+    function _decodeFailed(label, err, u8) {
+      return {
+        as: 'text',
+        decodeError: label + ' decode failed: ' + ((err && err.message) || err),
+        decoded: _text(u8)
+      };
+    }
+
+    function _decodeArrowAs(u8) {
+      try {
+        if (!_arrowLoaded()) throw new Error('Apache Arrow failed to load — check the CDN script tag');
+        var kind = _detectArrow(u8);
+        if (!kind) throw new Error('body is not Arrow IPC — no ARROW1 or continuation magic');
+        var res = _arrowDecode(u8);
+        if (!_arrowUsable(res)) throw new Error('no schema could be read from the IPC body');
+        return { as: 'arrow', decoded: res.rows, arrowInfo: res.schema, arrowIpc: kind };
+      } catch (e) {
+        return _decodeFailed('Arrow', e, u8);
+      }
+    }
+
+    // tableFromIPC hands back an empty 0-column table for input it cannot parse rather
+    // than throwing, so an absent schema is how a failed decode actually shows up.
+    // A real table with zero *rows* is fine — an empty result set still carries a schema.
+    function _arrowUsable(res) {
+      return !!(res && res.schema && res.schema.numCols);
+    }
+
+    function _decodeMsgpackAs(u8) {
+      try {
+        return { as: 'msgpack', decoded: msgpack.decode(u8) };
+      } catch (e) {
+        return _decodeFailed('MessagePack', e, u8);
+      }
+    }
+
+    function _decodeJsonAs(u8) {
+      try {
+        return { as: 'json', decoded: JSON.parse(_text(u8)) };
+      } catch (e) {
+        return _decodeFailed('JSON', e, u8);
+      }
+    }
+
+    function _decodeResponse(u8, want) {
+      if (u8.length === 0) return { as: 'empty', decoded: { _info: 'Empty response' } };
+
+      if (want === 'arrow')   return _decodeArrowAs(u8);
+      if (want === 'msgpack') return _decodeMsgpackAs(u8);
+      if (want === 'json')    return _decodeJsonAs(u8);
+
+      // 'auto': Arrow has to be tried first — msgpack would happily read the leading
+      // 'A' of ARROW1 as a positive fixint and report a bogus success.
+      var kind = _detectArrow(u8);
+      if (kind && _arrowLoaded()) {
+        try {
+          var res = _arrowDecode(u8);
+          if (_arrowUsable(res)) {
+            return { as: 'arrow', decoded: res.rows, arrowInfo: res.schema, arrowIpc: kind };
+          }
+        } catch (e) {
+          // Magic matched but the body isn't valid Arrow — keep going.
+        }
+      }
+      try { return { as: 'msgpack', decoded: msgpack.decode(u8) }; } catch (e) {}
+      try { return { as: 'json',    decoded: JSON.parse(_text(u8)) }; } catch (e) {}
+      return { as: 'text', decoded: _text(u8) };
+    }
+
     /* ─── HTTP API Tester ─── */
     $scope.setHttpFormat = function (format, ipc) {
       $scope.http.format = format;
@@ -489,11 +577,24 @@ angular.module('socketTester', ['ngSanitize'])
       $scope.validateHttpJson();
     };
 
+    $scope.setHttpRespFormat = function (respFormat) {
+      $scope.http.respFormat = respFormat;
+    };
+
     function _defaultContentType() {
-      return ($scope.http.format === 'arrow')
-        ? ARROW_CONTENT_TYPES[$scope.http.arrowIpc] || ARROW_CONTENT_TYPES.file
-        : 'application/x-msgpack';
+      if ($scope.http.format === 'arrow') {
+        return ARROW_CONTENT_TYPES[$scope.http.arrowIpc] || ARROW_CONTENT_TYPES.file;
+      }
+      return ($scope.http.format === 'json') ? 'application/json' : 'application/x-msgpack';
     }
+
+    $scope.httpResponseLabel = function () {
+      var as = $scope.http.response && $scope.http.response.decodedAs;
+      if (as === 'arrow')   return 'DECODED ROWS (ARROW)';
+      if (as === 'msgpack') return 'DECODED JSON (MSGPACK)';
+      if (as === 'json')    return 'RESPONSE JSON';
+      return 'RESPONSE DATA';
+    };
 
     function _clearHttpEncoded() {
       $scope.http.encodedBytes   = null;
@@ -517,6 +618,10 @@ angular.module('socketTester', ['ngSanitize'])
           var enc = _arrowEncode(obj, $scope.http.arrowIpc);
           bytes = enc.bytes;
           $scope.http.arrowInfo = _arrowSchema(enc.table, enc.dropped);
+        } else if ($scope.http.format === 'json') {
+          // Re-serialised rather than sent verbatim, so the byte preview is exactly
+          // what goes on the wire.
+          bytes = new TextEncoder().encode(JSON.stringify(obj));
         } else {
           bytes = new Uint8Array(msgpack.encode(obj));
         }
@@ -584,8 +689,7 @@ angular.module('socketTester', ['ngSanitize'])
         method: method,
         headers: Object.assign({
           'Content-Type': $scope.http.contentType || _defaultContentType(),
-          'Accept': 'application/vnd.apache.arrow.file, application/vnd.apache.arrow.stream, ' +
-                    'application/msgpack, application/x-msgpack, application/json'
+          'Accept': ACCEPT_HEADERS[$scope.http.respFormat] || ACCEPT_HEADERS.auto
         }, customHeaders)
       };
 
@@ -603,64 +707,19 @@ angular.module('socketTester', ['ngSanitize'])
         .then(function(data) {
           $scope.$applyAsync(function() {
             $scope.http.loading = false;
-            var u8         = new Uint8Array(data.buffer);
-            var rawBytes   = Array.from(u8);
-            var decoded;
-            var wasMsgpack = false;
-            var wasArrow   = false;
-            var arrowInfo  = null;
-            var arrowIpc   = '';
-
-            if (rawBytes.length === 0) {
-              decoded = { _info: 'Empty responses' };
-            } else {
-              // Arrow has to be tried first: msgpack would happily read the leading
-              // 'A' of ARROW1 as a positive fixint and report a bogus success.
-              var arrowKind = _detectArrow(u8);
-              var handled   = false;
-
-              if (arrowKind && _arrowLoaded()) {
-                try {
-                  var arrowRes = _arrowDecode(u8);
-                  decoded   = arrowRes.rows;
-                  arrowInfo = arrowRes.schema;
-                  arrowIpc  = arrowKind;
-                  wasArrow  = true;
-                  handled   = true;
-                } catch(e) {
-                  // Magic matched but the body isn't valid Arrow — fall through to msgpack/JSON.
-                }
-              }
-
-              if (!handled) {
-                try {
-                  decoded    = msgpack.decode(u8);
-                  wasMsgpack = true;
-                } catch(e) {
-                  // If decode fails, attempt to parse as string/JSON
-                  try {
-                    var str = new TextDecoder().decode(u8);
-                    decoded = JSON.parse(str);
-                  } catch(e2) {
-                    // Fallback: just raw string
-                    decoded = new TextDecoder().decode(u8);
-                  }
-                }
-              }
-            }
-
-            var prettyStr = _renderJson(decoded);
+            var u8  = new Uint8Array(data.buffer);
+            var out = _decodeResponse(u8, $scope.http.respFormat);
 
             $scope.http.response = {
               status: data.status,
               ts: new Date(),
-              rawBytes: rawBytes,
-              wasMsgpack: wasMsgpack,
-              wasArrow: wasArrow,
-              arrowInfo: arrowInfo,
-              arrowIpc: arrowIpc,
-              decoded: decoded,
-              prettyJson: $sce.trustAsHtml(prettyStr)
+              rawBytes: Array.from(u8),
+              decodedAs: out.as,
+              decodeError: out.decodeError || '',
+              arrowInfo: out.arrowInfo || null,
+              arrowIpc: out.arrowIpc || '',
+              decoded: out.decoded,
+              prettyJson: $sce.trustAsHtml(_renderJson(out.decoded))
             };
           });
         })
@@ -672,8 +731,8 @@ angular.module('socketTester', ['ngSanitize'])
               status: 'Error',
               ts: new Date(),
               rawBytes: [],
-              wasMsgpack: false,
-              wasArrow: false,
+              decodedAs: '',
+              decodeError: '',
               arrowInfo: null,
               arrowIpc: '',
               decoded: errInfo,

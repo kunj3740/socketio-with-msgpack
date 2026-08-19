@@ -2,7 +2,7 @@
 
 A zero-dependency frontend for testing Socket.IO servers that use **MessagePack (Vec<u8>)** binary encoding — built for your Rust/socketioxide backend.
 
-The **HTTP API tester** additionally speaks **Apache Arrow IPC**, so the same page can exercise both msgpack and Arrow endpoints.
+The **HTTP API tester** speaks **plain JSON**, **MessagePack** and **Apache Arrow IPC**, with the request and response formats chosen independently.
 
 ## How to Run
 
@@ -21,18 +21,39 @@ python3 -m http.server 8080
 
 ## Features
 
-### HTTP API Tester (MsgPack **or** Arrow)
-- Pick a **BODY FORMAT** — `MSGPACK` or `ARROW`
-- With `ARROW`, choose the IPC framing:
-  - **FILE** — the Arrow *file* format, `ARROW1` magic, random access (default)
-  - **STREAM** — the Arrow *stream* format, `0xFFFFFFFF` continuation framing
-- The JSON payload is encoded to an Arrow IPC buffer and sent as the raw request body,
-  with a live byte preview and the inferred **schema** (row/column counts + field types)
-- Content-Type follows the format automatically
-  (`application/vnd.apache.arrow.file` / `.stream`, or `application/x-msgpack`) —
-  a hand-typed Content-Type is never overwritten
-- Responses are **auto-detected**: Arrow (by IPC magic) -> MessagePack -> JSON -> raw text.
-  Arrow responses are shown as decoded rows alongside their schema
+### HTTP API Tester (JSON / MsgPack / Arrow)
+
+Request and response formats are set independently, so you can POST JSON and read Arrow
+back, or POST Arrow and read JSON — whatever the endpoint under test actually does.
+
+**REQUEST BODY FORMAT** — what gets sent:
+
+| Option | Body | Content-Type |
+|--------|------|--------------|
+| `JSON` | the payload re-serialised as compact UTF-8 JSON | `application/json` |
+| `MSGPACK` | `msgpack.encode()` output | `application/x-msgpack` |
+| `ARROW` | an Arrow IPC buffer | `application/vnd.apache.arrow.file` / `.stream` |
+
+Content-Type follows the selected format, but a **hand-typed Content-Type is never
+overwritten**. Every format shows a live byte preview; Arrow additionally shows the
+inferred schema (row/column counts + field types).
+
+With `ARROW`, pick the IPC framing:
+- **FILE** — the Arrow *file* format, `ARROW1` magic, random access (default)
+- **STREAM** — the Arrow *stream* format, `0xFFFFFFFF` continuation framing
+
+**RESPONSE FORMAT** — how the body is read back, and what goes in the `Accept` header:
+
+| Option | Behaviour |
+|--------|-----------|
+| `AUTO` | Arrow (by IPC magic) -> MessagePack -> JSON -> raw text (default) |
+| `JSON` | forced `JSON.parse` |
+| `MSGPACK` | forced `msgpack.decode` |
+| `ARROW` | forced `Arrow.tableFromIPC`, shown as decoded rows + schema |
+
+A **forced** decoder that fails reports the failure and shows the raw body, rather than
+quietly falling back — otherwise picking a format would tell you nothing. `AUTO` is the
+one that chains.
 
 > Arrow is columnar, so an Arrow payload must be a **JSON array of row objects**
 > (a single object is sent as one row). A column that is `null` in every row can't be
@@ -53,13 +74,15 @@ python3 -m http.server 8080
 
 | Direction | Format | Tool |
 |-----------|--------|------|
+| JSON → bytes | JSON | `JSON.stringify()` + `TextEncoder` |
+| bytes → JSON | JSON | `TextDecoder` + `JSON.parse()` |
 | JSON → binary | MessagePack | `msgpack.encode()` (msgpack-lite) |
 | Binary → JSON | MessagePack | `msgpack.decode()` (msgpack-lite) |
 | JSON rows → binary | Arrow IPC | `Arrow.tableFromJSON()` + `Arrow.tableToIPC()` (apache-arrow) |
 | Binary → JSON rows | Arrow IPC | `Arrow.tableFromIPC()` (apache-arrow) |
 | Wire format | — | `Uint8Array` (Socket.IO binary event / HTTP body) |
 
-Arrow support is **HTTP-only** — the Socket.IO emit/listen panels remain MessagePack + JSON.
+Format selection is **HTTP-only** — the Socket.IO emit/listen panels remain MessagePack + JSON.
 
 Arrow `Int64` / `Timestamp` values decode to JavaScript `BigInt` / `Date`; both are
 normalised to strings for display and for the COPY JSON button.

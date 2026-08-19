@@ -52,14 +52,30 @@
   <!-- HTTP API TESTER -->
   <div class="workspace" id="http-section" ng-style="{'order': connected ? 2 : 1}" style="margin-bottom: 20px;">
     <section class="panel http-req-panel">
-      <div class="panel-label">HTTP API TESTER (MSGPACK / ARROW)</div>
+      <div class="panel-label">HTTP API TESTER (JSON / MSGPACK / ARROW)</div>
 
       <div class="field-row">
-        <label class="field-label">BODY FORMAT</label>
+        <label class="field-label">REQUEST BODY FORMAT</label>
         <div class="mode-toggle inline-toggle">
+          <button class="mode-btn mode-json" ng-class="{'active': http.format === 'json'}" ng-click="setHttpFormat('json')">JSON</button>
           <button class="mode-btn mode-msgpack" ng-class="{'active': http.format === 'msgpack'}" ng-click="setHttpFormat('msgpack')">MSGPACK</button>
           <button class="mode-btn mode-arrow" ng-class="{'active': http.format === 'arrow'}" ng-click="setHttpFormat('arrow')">ARROW</button>
         </div>
+      </div>
+
+      <div class="field-row">
+        <label class="field-label">RESPONSE FORMAT</label>
+        <div class="mode-toggle inline-toggle">
+          <button class="mode-btn mode-auto" ng-class="{'active': http.respFormat === 'auto'}" ng-click="setHttpRespFormat('auto')">AUTO</button>
+          <button class="mode-btn mode-json" ng-class="{'active': http.respFormat === 'json'}" ng-click="setHttpRespFormat('json')">JSON</button>
+          <button class="mode-btn mode-msgpack" ng-class="{'active': http.respFormat === 'msgpack'}" ng-click="setHttpRespFormat('msgpack')">MSGPACK</button>
+          <button class="mode-btn mode-arrow" ng-class="{'active': http.respFormat === 'arrow'}" ng-click="setHttpRespFormat('arrow')">ARROW</button>
+        </div>
+      </div>
+
+      <div class="resp-note">
+        <span ng-if="http.respFormat === 'auto'">⚡ Response decoder picks itself: <strong>Arrow</strong> (by IPC magic) → <strong>MsgPack</strong> → <strong>JSON</strong> → raw text.</span>
+        <span ng-if="http.respFormat !== 'auto'">⚡ Response forced to <strong>{{ http.respFormat | uppercase }}</strong> — a decode failure is reported instead of silently falling back.</span>
       </div>
 
       <div class="field-row" ng-if="http.format === 'arrow'">
@@ -120,6 +136,7 @@
       <div class="field-row">
         <label class="field-label">
           JSON PAYLOAD
+          <span class="badge badge-json" ng-if="http.format === 'json'">JSON → UTF-8 body</span>
           <span class="badge" ng-if="http.format === 'msgpack'">JSON → MsgPack</span>
           <span class="badge badge-arrow" ng-if="http.format === 'arrow'">JSON rows → Arrow IPC ({{ http.arrowIpc }})</span>
         </label>
@@ -132,7 +149,7 @@
       <!-- HTTP Encoded preview -->
       <div class="encoded-preview" ng-if="http.encodedPreview.length && ['GET', 'HEAD'].indexOf(http.method) === -1">
         <div class="preview-label">
-          {{ http.format === 'arrow' ? 'ARROW IPC BYTES' : 'MSGPACK ENCODED BYTES' }}
+          {{ http.format === 'arrow' ? 'ARROW IPC BYTES' : (http.format === 'json' ? 'JSON UTF-8 BYTES' : 'MSGPACK ENCODED BYTES') }}
           <span class="rust-type-badge arrow-badge" ng-if="http.format === 'arrow'">{{ http.arrowIpc | uppercase }}</span>
         </div>
         <div class="arrow-schema" ng-if="http.arrowInfo">
@@ -156,7 +173,7 @@
 
       <div class="action-row">
         <button class="btn btn-emit" ng-click="sendHttpRequest()" ng-disabled="!http.url || http.jsonError || http.headersError || http.loading">
-          <span ng-if="!http.loading"><span class="btn-icon">▶</span> SEND {{ http.format === 'arrow' ? 'ARROW' : 'MSGPACK' }}</span>
+          <span ng-if="!http.loading"><span class="btn-icon">▶</span> SEND {{ http.format | uppercase }}</span>
           <span ng-if="http.loading"><span class="spinner"></span> SENDING...</span>
         </button>
       </div>
@@ -179,8 +196,10 @@
       <div class="log-entry entry-new" ng-if="http.response" style="margin-top: 0; padding: 12px;">
         <div class="entry-header" style="margin-bottom: 14px;">
           <span class="entry-event">Status: {{ http.response.status }}</span>
-          <span class="enc-badge enc-badge-arrow" ng-if="http.response.wasArrow">ARROW {{ http.response.arrowIpc | uppercase }} DECODED</span>
-          <span class="enc-badge" ng-if="http.response.wasMsgpack">MSGPACK DECODED</span>
+          <span class="enc-badge enc-badge-arrow" ng-if="http.response.decodedAs === 'arrow'">ARROW {{ http.response.arrowIpc | uppercase }} DECODED</span>
+          <span class="enc-badge" ng-if="http.response.decodedAs === 'msgpack'">MSGPACK DECODED</span>
+          <span class="enc-badge enc-badge-json" ng-if="http.response.decodedAs === 'json'">JSON PARSED</span>
+          <span class="enc-badge enc-badge-text" ng-if="http.response.decodedAs === 'text'">RAW TEXT</span>
           <span class="entry-time" ng-if="http.response.ts">{{ http.response.ts | date:'HH:mm:ss.sss' }}</span>
         </div>
 
@@ -202,11 +221,13 @@
           </div>
         </div>
 
+        <div class="decode-error" ng-if="http.response.decodeError">
+          ⚠ {{ http.response.decodeError }} — showing the raw body instead.
+        </div>
+
         <div class="entry-json" style="margin-bottom: 0;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div class="json-label" ng-if="http.response.wasArrow" style="margin-bottom: 0;">DECODED ROWS (ARROW)</div>
-            <div class="json-label" ng-if="!http.response.wasArrow && http.response.wasMsgpack" style="margin-bottom: 0;">DECODED JSON (MSGPACK)</div>
-            <div class="json-label" ng-if="!http.response.wasArrow && !http.response.wasMsgpack" style="margin-bottom: 0;">RESPONSE DATA</div>
+            <div class="json-label" style="margin-bottom: 0;">{{ httpResponseLabel() }}</div>
             <button class="btn-copy" ng-click="copyToClipboard(http.response.decoded, $event)">COPY JSON</button>
           </div>
           <pre class="json-pre" ng-bind-html="http.response.prettyJson"></pre>
